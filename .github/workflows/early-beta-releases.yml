@@ -1,0 +1,35 @@
+name: Mark releases as Early Beta
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  mark-early-beta:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Label the published release as Early Beta
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          gh release view "$RELEASE_TAG" --json name,body > "$RUNNER_TEMP/release.json"
+          title="$(jq -r '.name // empty' "$RUNNER_TEMP/release.json")"
+          body="$(jq -r '.body // empty' "$RUNNER_TEMP/release.json")"
+          marker='<!-- early-beta-notice -->'
+
+          if [[ "$title" != *"(Early Beta)"* ]]; then
+            title="${title:-SoundBoardify $RELEASE_TAG} (Early Beta)"
+          fi
+          if [[ "$body" != *"$marker"* ]]; then
+            body="$marker
+          > **Early Beta:** SoundBoardify is still in early beta and may contain bugs or unfinished features. Back up your sound library before updating.
+
+          $body"
+          fi
+
+          gh release edit "$RELEASE_TAG" --title "$title" --notes "$body" --prerelease
