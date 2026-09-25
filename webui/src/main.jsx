@@ -77,7 +77,8 @@ function App() {
   const playbackRef = useRef(playback);
   const playRequestRef = useRef(0);
   const [optionsOpen, setOptionsOpen] = useState(false);
-  const [form, setForm] = useState({ name: '', buttonLabel: '', outputGain: 0.75, mode: 'toggle', startSeconds: 0, endSeconds: '' });
+  const [form, setForm] = useState({ name: '', buttonLabel: '', outputGain: 0.75, mode: 'toggle', startSeconds: 0, endSeconds: '', hotkey: '' });
+  const [recordingHotkey, setRecordingHotkey] = useState(false);
   const [imageFile, setImageFile] = useState(null);
   const [preview, setPreview] = useState('');
 
@@ -133,6 +134,23 @@ function App() {
       return options.reduce((nearest, option) => Math.abs(option - current) < Math.abs(nearest - current) ? option : nearest, options[0]);
     });
   }, [sounds.length]);
+
+  useEffect(() => {
+    if (!recordingHotkey) return;
+    const capture = (event) => {
+      if (event.key === 'Escape') { event.preventDefault(); setRecordingHotkey(false); return; }
+      const key = event.key.length === 1 ? event.key.toUpperCase() : event.key.toUpperCase();
+      if (!event.ctrlKey || !event.altKey || !(/^[A-Z0-9]$/.test(key) || /^F(?:[1-9]|1[0-2])$/.test(key))) {
+        if (!['Control', 'Alt', 'Shift'].includes(event.key)) { event.preventDefault(); setToast('Use Ctrl + Alt with a letter, number, or F1–F12.'); }
+        return;
+      }
+      event.preventDefault();
+      setForm((current) => ({ ...current, hotkey: `Control+Alt+${key}` }));
+      setRecordingHotkey(false);
+    };
+    window.addEventListener('keydown', capture, true);
+    return () => window.removeEventListener('keydown', capture, true);
+  }, [recordingHotkey]);
 
   useEffect(() => {
     const measure = () => {
@@ -257,19 +275,30 @@ function App() {
   }
 
   async function addAudio(event) {
-    const file = event.target.files?.[0];
-    if (!file) return;
+    const files = [...(event.target.files || [])];
+    if (!files.length) return;
     setSaving(true);
-    const body = new FormData(); body.append('file', file);
-    try { await api('/api/sounds', { method: 'POST', body }); await refresh(); }
-    catch (error) { setToast(error.message); }
-    finally { setSaving(false); event.target.value = ''; }
+    let added = 0;
+    const failures = [];
+    try {
+      for (const file of files) {
+        const body = new FormData(); body.append('file', file);
+        try { await api('/api/sounds', { method: 'POST', body }); added += 1; }
+        catch (error) { failures.push(`${file.name}: ${error.message}`); }
+      }
+      if (added) await refresh();
+      if (failures.length) setToast(`${added} added · ${failures.length} failed: ${failures[0]}`);
+      else setToast(`${added} ${added === 1 ? 'sound' : 'sounds'} added`);
+    } catch (error) {
+      setToast(added ? `${added} added, but the board could not refresh. ${error.message}` : error.message);
+    } finally { setSaving(false); event.target.value = ''; }
   }
 
   function openEditor(sound) {
     setOptionsOpen(false);
     setEditing(sound);
-    setForm({ name: sound.name || '', buttonLabel: sound.buttonLabel || '', outputGain: sound.outputGain ?? 0.75, mode: sound.mode || 'toggle', startSeconds: sound.startSeconds || 0, endSeconds: sound.endSeconds ?? '' });
+    setForm({ name: sound.name || '', buttonLabel: sound.buttonLabel || '', outputGain: sound.outputGain ?? 0.75, mode: sound.mode || 'toggle', startSeconds: sound.startSeconds || 0, endSeconds: sound.endSeconds ?? '', hotkey: sound.hotkey || '' });
+    setRecordingHotkey(false);
     setImageFile(null);
   }
 
@@ -372,7 +401,7 @@ function App() {
         <button className="add-button" type="button" aria-label="Add a sound" title="Add a sound" disabled={saving} onClick={() => fileRef.current?.click()}>
           <Glyph name="plus" size={22}/>
         </button>
-        <input ref={fileRef} className="visually-hidden" type="file" accept="audio/*,.mp3,.wav,.m4a,.aac,.wma" onChange={addAudio} />
+        <input ref={fileRef} className="visually-hidden" type="file" multiple accept="audio/*,.mp3,.wav,.m4a,.aac,.wma" onChange={addAudio} />
       </div>
     </header>
 
@@ -427,7 +456,7 @@ function App() {
 
     {toast && <div className="toast" role="alert">{toast}</div>}
 
-    <dialog ref={dialogRef} className="edit-dialog" onClose={() => { setEditing(null); setImageFile(null); }} onClick={(event) => { if (event.target === dialogRef.current) dialogRef.current.close(); }}>
+    <dialog ref={dialogRef} className="edit-dialog" onClose={() => { setEditing(null); setImageFile(null); setRecordingHotkey(false); }} onClick={(event) => { if (event.target === dialogRef.current) dialogRef.current.close(); }}>
       {editing && <form onSubmit={saveEdit}>
         <div className="dialog-head"><div><h2>Edit sound</h2><p>Make this button yours.</p></div><button className="dialog-close" type="button" aria-label="Close editor" onClick={() => dialogRef.current?.close()}><Glyph name="close"/></button></div>
         <label className="artwork-picker">
@@ -438,6 +467,7 @@ function App() {
         <div className="form-fields">
           <label className="field">Name<input value={form.name} maxLength={100} required onChange={(event) => setForm({ ...form, name: event.target.value })}/></label>
           <label className="field">Button title<input value={form.buttonLabel} maxLength={100} placeholder="Use sound name" onChange={(event) => setForm({ ...form, buttonLabel: event.target.value })}/></label>
+          <div className="field hotkey-field"><span>Keyboard shortcut</span><small>Works globally while Soundboardify is running.</small><div className="hotkey-control"><kbd>{form.hotkey?.replaceAll('Control', 'Ctrl').replaceAll('+', ' + ') || 'Not set'}</kbd><button type="button" className={recordingHotkey ? 'is-recording' : ''} onClick={() => setRecordingHotkey(true)}>{recordingHotkey ? 'Press Ctrl + Alt + key…' : 'Record'}</button>{form.hotkey && <button type="button" className="hotkey-clear" aria-label="Clear keyboard shortcut" onClick={() => { setForm({ ...form, hotkey: '' }); setRecordingHotkey(false); }}>Clear</button>}</div></div>
           <div className={`playback-options ${optionsOpen ? 'is-open' : ''}`}>
             <button className="options-toggle" type="button" aria-expanded={optionsOpen} onClick={() => setOptionsOpen((value) => !value)}><span><strong>Playback options</strong><small>Behavior, volume and trim</small></span><Glyph name="chevron" size={18}/></button>
             {optionsOpen && <div className="option-grid">

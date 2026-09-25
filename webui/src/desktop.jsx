@@ -57,6 +57,11 @@ export default function DesktopApp() {
   const [updateState, setUpdateState] = useState('checking');
   const [latestVersion, setLatestVersion] = useState(null);
   const [releaseUrl, setReleaseUrl] = useState(null);
+  const [releaseName, setReleaseName] = useState('');
+  const [releaseNotes, setReleaseNotes] = useState('');
+  const [releasePublishedAt, setReleasePublishedAt] = useState(null);
+  const [releaseAssets, setReleaseAssets] = useState([]);
+  const [hotkeyStatus, setHotkeyStatus] = useState({ active: 0, unavailable: [] });
   const [checkingUpdates, setCheckingUpdates] = useState(false);
   const masterTimer = useRef(null);
 
@@ -75,6 +80,10 @@ export default function DesktopApp() {
       setAppVersion(result.currentVersion || currentVersion);
       setLatestVersion(result.latestVersion || null);
       setReleaseUrl(result.releaseUrl || null);
+      setReleaseName(result.releaseName || '');
+      setReleaseNotes(result.releaseNotes || '');
+      setReleasePublishedAt(result.releasePublishedAt || null);
+      setReleaseAssets(result.assets || []);
       setUpdateState(result.state || (result.updateAvailable ? 'available' : 'current'));
     } catch {
       setUpdateState('error');
@@ -86,6 +95,12 @@ export default function DesktopApp() {
     const timer = setInterval(() => request('/api/status').then(setStatus).catch(() => {}), 3500);
     return () => clearInterval(timer);
   }, [checkForUpdates]);
+  useEffect(() => {
+    const refreshHotkeys = () => window.soundboardifyDesktop?.getHotkeyStatus?.().then(setHotkeyStatus).catch(() => {});
+    refreshHotkeys();
+    const timer = setInterval(refreshHotkeys, 2500);
+    return () => clearInterval(timer);
+  }, []);
   useEffect(() => () => clearTimeout(masterTimer.current), []);
   useEffect(() => { if (!toast) return; const timer = setTimeout(() => setToast(''), 3500); return () => clearTimeout(timer); }, [toast]);
 
@@ -195,6 +210,11 @@ export default function DesktopApp() {
             {settings.monitorLocally && <DevicePicker id="monitor" label="Local playback" detail="Optional listening device; follows Windows by default." value={settings.monitorEndpointId || null} currentName={status?.monitorEndpoint} devices={devices} onChange={selectMonitorDevice}/>}
             <label className="master-level"><span><strong>Overall volume</strong><output>{Math.round(settings.masterVolume * 100)}%</output></span><input type="range" min="0" max="1" step=".01" value={settings.masterVolume} onChange={event => changeMasterVolume(Number(event.target.value))}/></label>
             <button className="test-output" onClick={() => request('/api/audio/test', { method: 'POST' }).then(() => setToast('Test sound played')).catch(error => setToast(error.message))}>Play a test sound <Icon name="arrow" size={14}/></button>
+            <div className="shortcut-summary">
+              <div><strong>Global sound hotkeys</strong><small>Assign Ctrl + Alt shortcuts in a sound’s edit menu. They work while Soundboardify is running, even in the background.</small></div>
+              <span className={hotkeyStatus.unavailable.length ? 'has-conflicts' : ''}>{hotkeyStatus.active} active</span>
+              {hotkeyStatus.unavailable.length > 0 && <p>Could not register {hotkeyStatus.unavailable.map(item => item.hotkey).join(', ')}. Another app may already use these shortcuts.</p>}
+            </div>
           </section>
           <section className="settings-section connection-section">
             <div className="section-heading"><span className="section-icon"><Icon name="lock"/></span><div><h2>Phone access</h2><p>Control this board from your private network.</p></div></div>
@@ -205,6 +225,15 @@ export default function DesktopApp() {
               <p>{settings.pairingEnabled ? 'Only people with the current QR link or pairing token can use phone controls.' : 'Turn this on to require a private token for phone control.'}</p>
               {settings.pairingEnabled ? <div className="pairing-actions"><button onClick={() => pairingAction('rotate')} disabled={busy}><Icon name="refresh" size={14}/> Rotate token</button><button className="quiet-danger" onClick={() => pairingAction('disable')} disabled={busy}>Turn off</button></div> : <div className="pairing-actions"><input aria-label="Optional pairing token" placeholder="Or enter your own token" value={pairDraft} onChange={event => setPairDraft(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') pairingAction('enable'); }}/><button className="pairing-enable" onClick={() => pairingAction('enable')} disabled={busy}>Enable pairing</button></div>}
             </div>
+            <details className="remote-guide">
+              <summary>How remote access works</summary>
+              <ol>
+                <li><strong>Wi-Fi / LAN:</strong> connect your phone and PC to the same trusted Wi-Fi, then scan the LAN QR code.</li>
+                <li><strong>Tailscale:</strong> install and sign in to Tailscale on both devices, enable access here, then open the Tailscale link.</li>
+                <li><strong>Pairing:</strong> enable pairing to require the private link token. Without it, anyone who can reach the allowed network can control this board.</li>
+              </ol>
+              <p>No router port forwarding is needed. Pairing is an access gate, not encryption; use trusted Wi-Fi or Tailscale and never expose the port to the public internet.</p>
+            </details>
             <button type="button" className="firewall-action" onClick={configureFirewall} disabled={busy}><span>Allow app in Windows Firewall</span><Icon name="arrow" size={14}/></button>
             <p className="firewall-note">Windows may ask for administrator approval. The rule is limited to this app and your local network{settings.tailscaleAccess ? ' and Tailscale' : ''}.</p>
           </section>
@@ -212,10 +241,16 @@ export default function DesktopApp() {
         <footer className="version-footer" aria-label="Application version and updates">
           <div className="version-information"><span>Version <strong>{appVersion ? `v${appVersion}` : '—'}</strong></span><span className={`version-message ${updateState}`} role="status" aria-live="polite">{updateMessage}</span></div>
           <div className="version-actions">
-            {updateState === 'available' && releaseUrl && <button type="button" className="version-release" onClick={openRelease}>View release</button>}
+            {updateState === 'available' && releaseUrl && <button type="button" className="version-release" onClick={openRelease}>Review update</button>}
             <button type="button" className="version-check" onClick={checkForUpdates} disabled={checkingUpdates}>{checkingUpdates ? 'Checking…' : 'Check for updates'}</button>
           </div>
         </footer>
+        {updateState === 'available' && releaseUrl && <section className="update-details" aria-label="Available update">
+          <div><strong>{releaseName || `Soundboardify ${latestVersion}`}</strong>{releasePublishedAt && <small>Published {new Date(releasePublishedAt).toLocaleDateString()}</small>}</div>
+          <p>Updates are never installed automatically. Review the notes on the official GitHub release page, then choose the installer or portable download yourself.</p>
+          {releaseAssets.length > 0 && <small className="update-assets">Available downloads: {releaseAssets.map(asset => /-Setup\.exe$/i.test(asset.name) ? 'Installer' : /-Windows\.exe$/i.test(asset.name) ? 'Portable' : asset.name).join(' · ')}</small>}
+          {releaseNotes && <details><summary>Release notes</summary><pre>{releaseNotes}</pre></details>}
+        </section>}
       </>}
     </section>
     {toast && <div role="status" className="desktop-toast">{toast}</div>}

@@ -2,13 +2,19 @@
 
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
-const { isNewerVersion, isSoundboardifyReleaseUrl } = require('./version-utils.cjs');
+const { isNewerVersion, isSoundboardifyReleaseAssetUrl, isSoundboardifyReleaseUrl } = require('./version-utils.cjs');
 
 test('compares release versions by numeric segments', () => {
   assert.equal(isNewerVersion('1.9.9', 'v1.10.0'), true);
   assert.equal(isNewerVersion('1.2.3', '1.2.4'), true);
   assert.equal(isNewerVersion('2.0.0', '1.99.99'), false);
   assert.equal(isNewerVersion('1.2.3', 'v1.2.3'), false);
+});
+
+test('accepts only HTTPS executable assets from Soundboardify releases', () => {
+  assert.equal(isSoundboardifyReleaseAssetUrl('https://github.com/js664/SoundBoardify/releases/download/v1.2.0/Soundboardify-1.2.0-Setup.exe'), true);
+  assert.equal(isSoundboardifyReleaseAssetUrl('https://github.com/attacker/repo/releases/download/v1.2.0/payload.exe'), false);
+  assert.equal(isSoundboardifyReleaseAssetUrl('http://github.com/js664/SoundBoardify/releases/download/v1.2.0/app.exe'), false);
 });
 
 test('rejects release tags that are not semantic versions', () => {

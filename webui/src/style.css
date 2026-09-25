@@ -184,6 +184,13 @@ button:disabled { cursor: not-allowed; opacity: .48; }
 .behavior-switch button { min-height: 36px; color: #aeb1a5; background: transparent; border: 0; border-radius: 8px; cursor: pointer; font-size: 12px; transition: color .18s ease, background .18s ease, transform .18s ease; }
 .behavior-switch button:active { transform: scale(.96); }
 .behavior-switch button.active { color: #171a11; background: var(--lime); font-weight: 700; box-shadow: 0 2px 9px #c9f36a2e; }
+.hotkey-field>small { color: var(--muted); font-size: 11px; line-height: 1.45; }
+.hotkey-control { display: flex; align-items: center; gap: 8px; }
+.hotkey-control kbd { display: grid; flex: 1; min-height: 40px; align-items: center; padding: 0 11px; color: var(--ink); background: #10110f; border: 1px solid #3a3d35; border-radius: 10px; font: 600 12px 'DM Sans', sans-serif; }
+.hotkey-control button { min-height: 38px; padding: 0 11px; color: #e3e8db; background: #242820; border: 1px solid #3a3d35; border-radius: 9px; cursor: pointer; font-size: 11px; transition: border-color .18s ease, color .18s ease, background .18s ease; }
+.hotkey-control button:hover { color: var(--lime); border-color: #c9f36a55; }
+.hotkey-control button.is-recording { color: #171a11; background: var(--lime); border-color: var(--lime); }
+.hotkey-control button.hotkey-clear { padding: 0 9px; color: #b8bbae; }
 .field input[type="range"] { appearance: none; height: 24px; background: transparent; }
 .field input[type="range"]::-webkit-slider-runnable-track { height: 4px; background: #44483d; border-radius: 99px; }
 .field input[type="range"]::-webkit-slider-thumb { appearance: none; width: 16px; height: 16px; margin-top: -6px; background: var(--lime); border: 2px solid #171a11; border-radius: 50%; box-shadow: 0 0 0 3px #c9f36a25; }

@@ -10,6 +10,59 @@ namespace SoundBoardify.Tests;
 
 public sealed class AudioPipelineTests
 {
+    [Theory]
+    [InlineData("Control+Alt+k", "Control+Alt+K")]
+    [InlineData("Control+Alt+7", "Control+Alt+7")]
+    [InlineData("Control+Alt+F12", "Control+Alt+F12")]
+    public void SoundHotkeysNormalizeSupportedCombinations(string value, string expected)
+    {
+        Assert.Equal(expected, SoundHotkey.Normalize(value));
+    }
+
+    [Theory]
+    [InlineData("K")]
+    [InlineData("Control+K")]
+    [InlineData("Control+Alt+F13")]
+    [InlineData("Control+Alt+Escape")]
+    public void SoundHotkeysRejectUnmodifiedOrUnsupportedKeys(string value)
+    {
+        Assert.Throws<ArgumentException>(() => SoundHotkey.Normalize(value));
+    }
+
+    [Fact]
+    public async Task SoundLibraryPreventsAssigningOneHotkeyToMultipleSounds()
+    {
+        var localAppData = Path.Combine(Path.GetTempPath(), "Soundboardify-hotkey-test-" + Guid.NewGuid().ToString("N"));
+        var firstPath = Path.Combine(localAppData, "first.wav");
+        var secondPath = Path.Combine(localAppData, "second.wav");
+        try
+        {
+            Directory.CreateDirectory(localAppData);
+            foreach (var path in new[] { firstPath, secondPath })
+            {
+                using var writer = new WaveFileWriter(path, new WaveFormat(8000, 16, 1));
+                writer.WriteSamples(new short[80], 0, 80);
+            }
+            var storage = new Storage(localAppData);
+            storage.Initialize();
+            var library = new SoundLibrary(storage);
+            Sound first;
+            Sound second;
+            await using (var stream = File.OpenRead(firstPath)) first = await library.ImportAsync(stream, "first.wav");
+            await using (var stream = File.OpenRead(secondPath)) second = await library.ImportAsync(stream, "second.wav");
+            library.Update(first.Id, sound => sound.Hotkey = "Control+Alt+A");
+
+            var error = Assert.Throws<ArgumentException>(() => library.Update(second.Id, sound => sound.Hotkey = "Control+Alt+a"));
+            Assert.Contains("already assigned", error.Message, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            if (Directory.Exists(localAppData) && Path.GetFileName(localAppData).StartsWith("Soundboardify-hotkey-test-", StringComparison.Ordinal))
+                Directory.Delete(localAppData, recursive: true);
+        }
+    }
+
     [Fact]
     public void GainChangesAreAppliedToSamplesAsTheyAreRead()
     {

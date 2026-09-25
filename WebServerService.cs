@@ -99,6 +99,15 @@ public sealed class WebServerService(AppCoordinator coordinator, WebSocketHub hu
             return Results.Content(svg, "image/svg+xml; charset=utf-8");
         });
         app.MapGet("/api/sounds", () => Results.Ok(coordinator.Library.All.Select(s => View(s, coordinator.Audio.Playback))));
+        app.MapGet("/api/hotkeys", () => Results.Ok(coordinator.Library.All.Where(sound => !string.IsNullOrWhiteSpace(sound.Hotkey)).Select(sound => new { sound.Id, sound.Name, sound.Hotkey })));
+        app.MapPost("/api/hotkeys/{id:guid}/trigger", (Guid id) =>
+        {
+            var sound = coordinator.Library.Get(id);
+            if (sound is null) return Results.NotFound();
+            if (coordinator.Audio.Playback.SoundId == id && sound.Mode == "toggle") coordinator.Stop();
+            else coordinator.Play(id);
+            return Results.Ok(coordinator.Audio.Playback);
+        });
         app.MapGet("/api/sounds/{id:guid}/image", (Guid id) =>
         {
             var sound = coordinator.Library.Get(id);
@@ -237,9 +246,9 @@ public sealed class WebServerService(AppCoordinator coordinator, WebSocketHub hu
     {
         var imageUrl = s.ImageFilename is null ? "/assets/logo.png" : $"/api/sounds/{s.Id}/image?v={Uri.EscapeDataString(s.ImageFilename)}";
         if (s.ImageFilename is not null && !string.IsNullOrWhiteSpace(coordinator.Settings.PairingToken)) imageUrl += "&token=" + Uri.EscapeDataString(coordinator.Settings.PairingToken);
-        return new { s.Id, s.Name, s.SourceFilename, s.SortOrder, s.OutputGain, s.StartSeconds, s.EndSeconds, s.SourceDurationSeconds, duration = s.PlayDuration, s.Mode, s.Icon, s.ButtonLabel, s.CreatedUtc, imageUrl, playing = p.SoundId == s.Id, progress = p.SoundId == s.Id && s.PlayDuration > 0 ? Math.Clamp((p.PositionSeconds - s.StartSeconds) / s.PlayDuration, 0, 1) : 0 };
+        return new { s.Id, s.Name, s.SourceFilename, s.SortOrder, s.OutputGain, s.StartSeconds, s.EndSeconds, s.SourceDurationSeconds, duration = s.PlayDuration, s.Mode, s.Hotkey, s.Icon, s.ButtonLabel, s.CreatedUtc, imageUrl, playing = p.SoundId == s.Id, progress = p.SoundId == s.Id && s.PlayDuration > 0 ? Math.Clamp((p.PositionSeconds - s.StartSeconds) / s.PlayDuration, 0, 1) : 0 };
     }
-    private static void ApplyPatch(Sound s, SoundPatch p) { if (p.Name is not null) s.Name = p.Name; if (p.Volume is not null) s.Volume = p.Volume.Value; if (p.OutputGain is not null) s.OutputGain = p.OutputGain.Value; if (p.StartSeconds is not null) s.StartSeconds = p.StartSeconds.Value; if (p.EndSeconds.ValueKind != JsonValueKind.Undefined) s.EndSeconds = p.EndSeconds.ValueKind == JsonValueKind.Null ? null : p.EndSeconds.GetDouble(); if (p.Mode is not null) s.Mode = p.Mode; if (p.Icon is not null) s.Icon = p.Icon; if (p.ButtonLabel is not null) s.ButtonLabel = p.ButtonLabel; }
+    private static void ApplyPatch(Sound s, SoundPatch p) { if (p.Name is not null) s.Name = p.Name; if (p.Volume is not null) s.Volume = p.Volume.Value; if (p.OutputGain is not null) s.OutputGain = p.OutputGain.Value; if (p.StartSeconds is not null) s.StartSeconds = p.StartSeconds.Value; if (p.EndSeconds.ValueKind != JsonValueKind.Undefined) s.EndSeconds = p.EndSeconds.ValueKind == JsonValueKind.Null ? null : p.EndSeconds.GetDouble(); if (p.Mode is not null) s.Mode = p.Mode; if (p.Hotkey is not null) s.Hotkey = p.Hotkey; if (p.Icon is not null) s.Icon = p.Icon; if (p.ButtonLabel is not null) s.ButtonLabel = p.ButtonLabel; }
     private static async Task<string?> DetectImageExtension(IFormFile file)
     {
         await using var stream = file.OpenReadStream();
@@ -257,6 +266,6 @@ public sealed class WebServerService(AppCoordinator coordinator, WebSocketHub hu
         return null;
     }
 }
-public record SoundPatch(string? Name, float? Volume, float? OutputGain, double? StartSeconds, JsonElement EndSeconds, string? Mode, string? Icon, string? ButtonLabel);
+public record SoundPatch(string? Name, float? Volume, float? OutputGain, double? StartSeconds, JsonElement EndSeconds, string? Mode, string? Icon, string? ButtonLabel, string? Hotkey = null);
 public record SettingsPatch(int? ButtonDensity, float? MasterVolume, float? MicOutputGain, bool? LanAccess, string? PairingToken, long? MaxUploadBytes, bool? MonitorLocally, bool? ReconnectAudio, int? Port, bool ClearPairingToken = false, bool? TailscaleAccess = null);
 public record DeviceSelection(string? Id);

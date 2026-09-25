@@ -23,9 +23,11 @@
 Play clips from your PC or tap them from your phone on the same Wi-Fi. Add artwork, arrange buttons, tune each sound’s volume, and choose where audio plays. Tailscale access is optional.
 
 - **Quick playback** with retriggering and per-sound volume.
+- **Fast setup** with multi-file sound imports and assignable global keyboard shortcuts.
 - **Phone control** through a Wi-Fi/LAN QR code. Pairing protection is available in Settings.
 - **Your audio devices** with Windows defaults detected automatically and optional local monitoring.
 - **Your layout** with custom images, button ordering, and a mobile-first board.
+- **Safer updates** with release notes and an official GitHub download page; updates never install silently.
 
 Download the Windows **installer** or **portable app** from [Releases](https://github.com/js664/SoundBoardify/releases). The installer adds Start Menu and optional desktop shortcuts; the portable app runs without installation. Open Soundboardify and scan the **Wi-Fi / LAN QR** with your phone. If Windows blocks the connection, choose **Allow app in Windows Firewall** in Settings and approve the prompt. Tailscale is off by default.
 

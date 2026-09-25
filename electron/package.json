@@ -1,6 +1,6 @@
 {
   "name": "soundboardify-desktop",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Open-source Windows soundboard with a phone-controlled web UI",
   "author": "Soundboardify contributors",
   "license": "MIT",

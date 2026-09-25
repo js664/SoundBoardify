@@ -1,10 +1,10 @@
-const { app, BrowserWindow, dialog, ipcMain, Menu, shell } = require('electron');
+const { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, shell } = require('electron');
 const { execFile, spawn } = require('node:child_process');
 const { promisify } = require('node:util');
 const fs = require('node:fs');
 const path = require('node:path');
 const net = require('node:net');
-const { isNewerVersion, isSoundboardifyReleaseUrl } = require('./version-utils.cjs');
+const { isNewerVersion, isSoundboardifyReleaseAssetUrl, isSoundboardifyReleaseUrl } = require('./version-utils.cjs');
 
 app.setName('Soundboardify');
 app.setAppUserModelId('com.soundboardify.desktop');
@@ -16,6 +16,11 @@ let activePort;
 let appOrigin;
 let portPoll;
 let stableBackendPath;
+let hotkeyPoll;
+let hotkeyRefreshActive = false;
+let hotkeySignature = '';
+const registeredHotkeys = new Map();
+let unavailableHotkeys = [];
 const execFileAsync = promisify(execFile);
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -97,6 +102,46 @@ async function startBackend() {
   backend = spawn(executable, ['--electron-backend', `--electron-port-file=${portFile}`], { windowsHide: true, stdio: 'ignore' });
   return waitForServer();
 }
+async function refreshGlobalHotkeys() {
+  if (!appOrigin || hotkeyRefreshActive) return;
+  hotkeyRefreshActive = true;
+  try {
+    const response = await fetch(`${appOrigin}/api/hotkeys`, { signal: AbortSignal.timeout(1800) });
+    if (!response.ok) return;
+    const sounds = await response.json();
+    const entries = sounds.filter(sound => typeof sound.hotkey === 'string' && sound.hotkey).map(sound => ({ id: sound.id, name: sound.name, hotkey: sound.hotkey }));
+    const signature = JSON.stringify(entries);
+    if (signature === hotkeySignature) {
+      const stillUnavailable = [];
+      for (const sound of unavailableHotkeys) {
+        try {
+          if (globalShortcut.register(sound.hotkey, () => {
+            void fetch(`${appOrigin}/api/hotkeys/${sound.id}/trigger`, { method: 'POST', signal: AbortSignal.timeout(2500) }).catch(error => console.warn(`Could not play hotkey sound ${sound.id}:`, error));
+          })) registeredHotkeys.set(sound.hotkey, sound.id);
+          else stillUnavailable.push(sound);
+        } catch (error) { stillUnavailable.push({ ...sound, reason: error.message }); }
+      }
+      unavailableHotkeys = stillUnavailable;
+      return;
+    }
+    globalShortcut.unregisterAll();
+    registeredHotkeys.clear();
+    unavailableHotkeys = [];
+    hotkeySignature = signature;
+    for (const sound of entries) {
+      try {
+        const registered = globalShortcut.register(sound.hotkey, () => {
+          void fetch(`${appOrigin}/api/hotkeys/${sound.id}/trigger`, { method: 'POST', signal: AbortSignal.timeout(2500) }).catch(error => console.warn(`Could not play hotkey sound ${sound.id}:`, error));
+        });
+        if (registered) registeredHotkeys.set(sound.hotkey, sound.id);
+        else unavailableHotkeys.push(sound);
+      } catch (error) {
+        unavailableHotkeys.push({ ...sound, reason: error.message });
+      }
+    }
+  } catch (error) { console.warn('Could not refresh sound hotkeys:', error); }
+  finally { hotkeyRefreshActive = false; }
+}
 async function createWindow(port) {
   activePort = port;
   appOrigin = `http://127.0.0.1:${port}`;
@@ -150,6 +195,11 @@ ipcMain.handle('soundboardify:app-version', event => {
   return app.getVersion();
 });
 
+ipcMain.handle('soundboardify:hotkey-status', event => {
+  if (!mainWindow || event.sender !== mainWindow.webContents) throw new Error('Hotkey status is only available in Soundboardify.');
+  return { active: registeredHotkeys.size, unavailable: unavailableHotkeys };
+});
+
 ipcMain.handle('soundboardify:check-updates', async event => {
   if (!mainWindow || event.sender !== mainWindow.webContents) throw new Error('Update checks are only available in Soundboardify.');
   const currentVersion = app.getVersion();
@@ -163,7 +213,17 @@ ipcMain.handle('soundboardify:check-updates', async event => {
   if (typeof release.tag_name !== 'string' || !isSoundboardifyReleaseUrl(release.html_url)) throw new Error('GitHub returned invalid release information.');
   const latestVersion = release.tag_name.replace(/^v/i, '');
   const updateAvailable = isNewerVersion(currentVersion, release.tag_name);
-  return { currentVersion, latestVersion, updateAvailable, releaseUrl: release.html_url, state: updateAvailable ? 'available' : 'current' };
+  return {
+    currentVersion,
+    latestVersion,
+    updateAvailable,
+    releaseUrl: release.html_url,
+    releaseName: typeof release.name === 'string' ? release.name.slice(0, 160) : `Soundboardify ${latestVersion}`,
+    releaseNotes: typeof release.body === 'string' ? release.body.slice(0, 6000) : '',
+    releasePublishedAt: typeof release.published_at === 'string' ? release.published_at : null,
+    assets: Array.isArray(release.assets) ? release.assets.filter(asset => typeof asset.name === 'string' && /^Soundboardify-.*\.(exe)$/i.test(asset.name) && isSoundboardifyReleaseAssetUrl(asset.browser_download_url)).map(asset => ({ name: asset.name, size: asset.size })) : [],
+    state: updateAvailable ? 'available' : 'current',
+  };
 });
 
 ipcMain.handle('soundboardify:open-release', async (event, url) => {
@@ -186,12 +246,12 @@ function watchBackendPort() {
   }, 350);
 }
 
-app.on('before-quit', () => { if (portPoll) clearInterval(portPoll); if (backend && !backend.killed) backend.kill(); });
+app.on('before-quit', () => { if (portPoll) clearInterval(portPoll); if (hotkeyPoll) clearInterval(hotkeyPoll); globalShortcut.unregisterAll(); if (backend && !backend.killed) backend.kill(); });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 
 const hasLock = app.requestSingleInstanceLock();
 if (!hasLock) app.quit();
 else app.whenReady().then(async () => {
-  try { const port = await startBackend(); await createWindow(port); watchBackendPort(); }
+  try { const port = await startBackend(); await createWindow(port); watchBackendPort(); void refreshGlobalHotkeys(); hotkeyPoll = setInterval(() => { void refreshGlobalHotkeys(); }, 3000); }
   catch (error) { dialog.showErrorBox('Soundboardify could not start', error.message); app.quit(); }
 });

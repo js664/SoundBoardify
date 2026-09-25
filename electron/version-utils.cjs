@@ -24,4 +24,13 @@ function isSoundboardifyReleaseUrl(value) {
   }
 }
 
-module.exports = { isNewerVersion, isSoundboardifyReleaseUrl };
+function isSoundboardifyReleaseAssetUrl(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && url.hostname === 'github.com' && /^\/js664\/SoundBoardify\/releases\/download\/v?\d+\.\d+\.\d+\/Soundboardify-[^/]+\.exe$/i.test(url.pathname);
+  } catch {
+    return false;
+  }
+}
+
+module.exports = { isNewerVersion, isSoundboardifyReleaseAssetUrl, isSoundboardifyReleaseUrl };

@@ -51,6 +51,9 @@ public sealed class SoundLibrary(Storage storage)
             change(s);
             s.Name = s.Name.Trim();
             if (s.Name.Length is < 1 or > 100) throw new ArgumentException("Name must contain 1 to 100 characters.");
+            s.Hotkey = SoundHotkey.Normalize(s.Hotkey);
+            if (s.Hotkey is not null && _sounds.Where((_, soundIndex) => soundIndex != index).Any(sound => string.Equals(sound.Hotkey, s.Hotkey, StringComparison.OrdinalIgnoreCase)))
+                throw new ArgumentException("That hotkey is already assigned to another sound.");
             s.Volume = Math.Clamp(s.Volume, 0, 1);
             s.OutputGain = Math.Clamp(s.OutputGain, 0, 1);
             s.StartSeconds = Math.Clamp(s.StartSeconds, 0, Math.Max(0, s.SourceDurationSeconds - .01));
