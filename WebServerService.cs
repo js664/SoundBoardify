@@ -1,0 +1,262 @@
+using System.Collections.Concurrent;
+using System.Net.WebSockets;
+using System.Text;
+using System.Text.Json;
+using System.Net.Sockets;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Hosting;
+using Serilog;
+using Microsoft.AspNetCore.Http.Features;
+
+namespace VRSoundboard;
+
+public sealed class WebSocketHub
+{
+    private readonly ConcurrentDictionary<Guid, (WebSocket Socket, SemaphoreSlim WriteGate)> _clients = new();
+    public int ClientCount => _clients.Count;
+    public event Action? ClientCountChanged;
+    public async Task Accept(HttpContext context)
+    {
+        using var socket = await context.WebSockets.AcceptWebSocketAsync();
+        var id = Guid.NewGuid(); var gate = new SemaphoreSlim(1, 1);
+        _clients[id] = (socket, gate); ClientCountChanged?.Invoke(); Log.Information("WebSocket connected {Client}", id);
+        try
+        {
+            var buffer = new byte[1024];
+            while (socket.State == WebSocketState.Open)
+            {
+                var msg = await socket.ReceiveAsync(buffer, context.RequestAborted);
+                if (msg.MessageType == WebSocketMessageType.Close) break;
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (WebSocketException) { }
+        finally { _clients.TryRemove(id, out _); gate.Dispose(); ClientCountChanged?.Invoke(); Log.Information("WebSocket disconnected {Client}", id); }
+    }
+    public async Task Broadcast(string type, object? data)
+    {
+        var bytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { type, data }, JsonOptions));
+        foreach (var entry in _clients.ToArray())
+        {
+            try
+            {
+                await entry.Value.WriteGate.WaitAsync();
+                try { if (entry.Value.Socket.State == WebSocketState.Open) await entry.Value.Socket.SendAsync(bytes, WebSocketMessageType.Text, true, CancellationToken.None); }
+                finally { entry.Value.WriteGate.Release(); }
+            }
+            catch { _clients.TryRemove(entry.Key, out _); }
+        }
+    }
+    internal static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+}
+
+public sealed class WebServerService(AppCoordinator coordinator, WebSocketHub hub, SteamMicDiagnostic diagnostic)
+{
+    private WebApplication? _app;
+    public bool Running => _app is not null;
+    public string? LastError { get; private set; }
+    public int ClientCount => hub.ClientCount;
+    public event Action<int>? StartedOnPort;
+    public async Task StartAsync()
+    {
+        if (_app is not null || !coordinator.Settings.WebEnabled) return;
+        var preferred = coordinator.Settings.Port;
+        try { await StartAtPortAsync(preferred); }
+        catch (Exception ex) when (IsAddressInUse(ex))
+        {
+            var fallback = FallbackPort(preferred);
+            Log.Warning(ex, "Preferred web port {Port} is unavailable; trying fallback port {FallbackPort}", preferred, fallback);
+            await StartAtPortAsync(fallback);
+        }
+    }
+    private async Task StartAtPortAsync(int port)
+    {
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = AppContext.BaseDirectory, WebRootPath = Path.Combine(AppContext.BaseDirectory, "Web") });
+        builder.WebHost.UseKestrel(o => { o.ListenAnyIP(port); o.Limits.MaxRequestBodySize = coordinator.Settings.MaxUploadBytes + 1024 * 1024; });
+        builder.Services.Configure<FormOptions>(o => o.MultipartBodyLengthLimit = coordinator.Settings.MaxUploadBytes);
+        var app = builder.Build();
+        app.Use(async (context, next) =>
+        {
+            var ip = AppCoordinator.NormalizeNetworkAddress(context.Connection.RemoteIpAddress);
+            var settings = coordinator.Settings;
+            if (!AppCoordinator.CanAccessFromNetwork(ip, settings.LanAccess, settings.TailscaleAccess)) { context.Response.StatusCode = 403; return; }
+            var token = coordinator.Settings.PairingToken;
+            if ((context.Request.Path.StartsWithSegments("/api") || context.Request.Path.StartsWithSegments("/ws")) && !IsPairingAuthorized(ip, token, context.Request.Headers["X-Pairing-Token"], context.Request.Query["token"])) { context.Response.StatusCode = 401; return; }
+            await next();
+        });
+        app.UseWebSockets(); app.UseDefaultFiles(); app.UseStaticFiles();
+        app.MapGet("/api/status", () => Results.Ok(new { server = "running", activePort = coordinator.ActiveWebPort, audio = coordinator.Audio.Status, endpoint = coordinator.Audio.EndpointName, monitorEnabled = coordinator.Settings.MonitorLocally, monitorEndpoint = coordinator.Settings.MonitorLocally ? coordinator.Settings.MonitorEndpointId is null ? coordinator.Devices.DefaultRenderName() : coordinator.Devices.Enumerate(coordinator.Settings.MonitorEndpointId).FirstOrDefault(d => d.Id == coordinator.Settings.MonitorEndpointId)?.Name : null, playback = coordinator.Audio.Playback, clients = hub.ClientCount, url = coordinator.PhoneUrl, wifiUrl = coordinator.PhoneUrl, tailscaleUrl = coordinator.TailscalePhoneUrl }));
+        app.MapGet("/api/phone/qr", (HttpContext context) =>
+        {
+            // The desktop QR is deliberately Wi-Fi/LAN only. Tailscale has a separate copyable link.
+            var url = coordinator.PhoneUrl;
+            if (string.IsNullOrWhiteSpace(url) || url.Contains("127.0.0.1", StringComparison.Ordinal)) return Results.NotFound();
+            using var generator = new QRCoder.QRCodeGenerator();
+            using var data = generator.CreateQrCode(url, QRCoder.QRCodeGenerator.ECCLevel.Q);
+            var svg = new QRCoder.SvgQRCode(data).GetGraphic(8, "#11130f", "#f1f2eb", false);
+            context.Response.Headers["Cache-Control"] = "no-store";
+            return Results.Content(svg, "image/svg+xml; charset=utf-8");
+        });
+        app.MapGet("/api/sounds", () => Results.Ok(coordinator.Library.All.Select(s => View(s, coordinator.Audio.Playback))));
+        app.MapGet("/api/sounds/{id:guid}/image", (Guid id) =>
+        {
+            var sound = coordinator.Library.Get(id);
+            if (sound?.ImageFilename is null) return Results.NotFound();
+            var path = Path.Combine(coordinator.Storage.ImagesPath, sound.ImageFilename);
+            if (!File.Exists(path)) return Results.NotFound();
+            var contentType = Path.GetExtension(path).ToLowerInvariant() switch { ".png" => "image/png", ".jpg" => "image/jpeg", ".webp" => "image/webp", _ => "application/octet-stream" };
+            return Results.File(path, contentType, enableRangeProcessing: false);
+        });
+        app.MapPost("/api/sounds", async (HttpRequest request) =>
+        {
+            if (!request.HasFormContentType) return Results.BadRequest("multipart/form-data required");
+            try
+            {
+                var form = await request.ReadFormAsync(); var file = form.Files.GetFile("file");
+                if (file is null || file.Length == 0) return Results.BadRequest("Choose an audio file.");
+                if (file.Length > coordinator.Settings.MaxUploadBytes) return Results.Problem("File exceeds the upload limit.", statusCode: 413);
+                await using var stream = file.OpenReadStream();
+                var sound = await coordinator.Library.ImportAsync(stream, file.FileName, request.HttpContext.RequestAborted);
+                Log.Information("Sound uploaded {Id}", sound.Id);
+                return Results.Created($"/api/sounds/{sound.Id}", View(sound, coordinator.Audio.Playback));
+            }
+            catch (InvalidDataException ex) { return Results.BadRequest(ex.Message); }
+            catch (Exception ex) when (ex is NotSupportedException or NAudio.MmException or System.Runtime.InteropServices.COMException) { Log.Warning(ex, "Audio upload could not be decoded"); return Results.BadRequest("Audio file could not be decoded."); }
+        }).DisableAntiforgery();
+        app.MapPost("/api/sounds/{id:guid}/image", async (Guid id, HttpRequest request) =>
+        {
+            var sound = coordinator.Library.Get(id);
+            if (sound is null) return Results.NotFound();
+            if (!request.HasFormContentType) return Results.BadRequest("multipart/form-data required");
+            var form = await request.ReadFormAsync();
+            var file = form.Files.GetFile("file");
+            if (file is null || file.Length == 0) return Results.BadRequest("Choose an image.");
+            if (file.Length > 5 * 1024 * 1024) return Results.Problem("Image must be 5 MB or smaller.", statusCode: 413);
+            var extension = await DetectImageExtension(file);
+            if (extension is null) return Results.BadRequest("Choose a PNG, JPEG or WebP image.");
+            var filename = id + "-" + Guid.NewGuid().ToString("N") + extension;
+            var path = Path.Combine(coordinator.Storage.ImagesPath, filename);
+            await using (var source = file.OpenReadStream())
+            await using (var target = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None))
+                await source.CopyToAsync(target, request.HttpContext.RequestAborted);
+            try { coordinator.Library.Update(id, s => s.ImageFilename = filename); }
+            catch { File.Delete(path); throw; }
+            if (sound.ImageFilename is not null && sound.ImageFilename != filename) File.Delete(Path.Combine(coordinator.Storage.ImagesPath, sound.ImageFilename));
+            return Results.Ok(new { imageUrl = $"/api/sounds/{id}/image" });
+        }).DisableAntiforgery();
+        app.MapDelete("/api/sounds/{id:guid}/image", (Guid id) =>
+        {
+            var sound = coordinator.Library.Get(id);
+            if (sound is null) return Results.NotFound();
+            if (sound.ImageFilename is not null)
+            {
+                coordinator.Library.Update(id, s => s.ImageFilename = null);
+                File.Delete(Path.Combine(coordinator.Storage.ImagesPath, sound.ImageFilename));
+            }
+            return Results.NoContent();
+        });
+        app.MapPatch("/api/sounds/{id:guid}", (Guid id, SoundPatch patch) =>
+        {
+            try { return Results.Ok(View(coordinator.UpdateSound(id, s => ApplyPatch(s, patch)), coordinator.Audio.Playback)); }
+            catch (KeyNotFoundException) { return Results.NotFound(); }
+            catch (ArgumentException ex) { return Results.BadRequest(ex.Message); }
+        });
+        app.MapDelete("/api/sounds/{id:guid}", (Guid id) => { try { if (coordinator.Audio.Playback.SoundId == id) coordinator.Stop(); coordinator.Library.Delete(id); return Results.NoContent(); } catch (KeyNotFoundException) { return Results.NotFound(); } });
+        app.MapPost("/api/sounds/bulk-delete", (Guid[] ids) =>
+        {
+            if (ids.Length is < 1 or > 200) return Results.BadRequest("Select between 1 and 200 sounds.");
+            try
+            {
+                if (coordinator.Audio.Playback.SoundId is Guid playing && ids.Contains(playing)) coordinator.Stop();
+                coordinator.Library.DeleteMany(ids);
+                return Results.NoContent();
+            }
+            catch (KeyNotFoundException ex) { return Results.NotFound(ex.Message); }
+        });
+        app.MapPost("/api/sounds/{id:guid}/play", (Guid id) => { try { coordinator.Play(id); return Results.Ok(coordinator.Audio.Playback); } catch (KeyNotFoundException) { return Results.NotFound(); } catch (Exception ex) { return Results.Problem(ex.Message); } });
+        app.MapPost("/api/sounds/{id:guid}/stop", (Guid id) => { if (coordinator.Audio.Playback.SoundId == id) coordinator.Stop(); return Results.Ok(coordinator.Audio.Playback); });
+        app.MapPost("/api/stop", () => { coordinator.Stop(); return Results.Ok(coordinator.Audio.Playback); });
+        app.MapPost("/api/sounds/reorder", (Guid[] ids) => { try { coordinator.Library.Reorder(ids); return Results.Ok(); } catch (ArgumentException ex) { return Results.BadRequest(ex.Message); } });
+        app.MapGet("/api/settings", () => Results.Ok(coordinator.SettingsView()));
+        app.MapPatch("/api/settings", (SettingsPatch patch) =>
+        {
+            var oldPort = coordinator.Settings.Port;
+            try
+            {
+                var settings = coordinator.UpdateSettings(s => { if (patch.Port is not null) s.Port = patch.Port.Value; if (patch.ButtonDensity is not null) s.ButtonDensity = patch.ButtonDensity.Value; if (patch.MasterVolume is not null) s.MasterVolume = patch.MasterVolume.Value; if (patch.MicOutputGain is not null) s.MicOutputGain = patch.MicOutputGain.Value; if (patch.LanAccess is not null) s.LanAccess = patch.LanAccess.Value; if (patch.TailscaleAccess is not null) s.TailscaleAccess = patch.TailscaleAccess.Value; if (patch.PairingToken is not null) s.PairingToken = patch.PairingToken; if (patch.ClearPairingToken) s.PairingToken = null; if (patch.MaxUploadBytes is not null) s.MaxUploadBytes = patch.MaxUploadBytes.Value; if (patch.MonitorLocally is not null) s.MonitorLocally = patch.MonitorLocally.Value; if (patch.ReconnectAudio is not null) s.ReconnectAudio = patch.ReconnectAudio.Value; });
+                if (ShouldRestartForPortChange(patch.Port, oldPort, coordinator.ActiveWebPort)) _ = RestartAfterPortChangeAsync();
+                return Results.Ok(AppSettingsView.From(settings));
+            }
+            catch (ArgumentException ex) { return Results.BadRequest(ex.Message); }
+        });
+        app.MapGet("/api/audio/devices", () =>
+        {
+            try { return Results.Ok(coordinator.Devices.Enumerate(coordinator.Settings.EndpointId ?? coordinator.Audio.EndpointId)); }
+            catch (Exception ex) { Log.Error(ex, "Audio endpoint enumeration failed"); return Results.Problem(ex.Message); }
+        });
+        app.MapPost("/api/audio/device", (DeviceSelection body) => { coordinator.SelectDevice(body.Id); return Results.Ok(new { status = coordinator.Audio.Status, endpoint = coordinator.Audio.EndpointName }); });
+        app.MapPost("/api/audio/monitor-device", (DeviceSelection body) => { coordinator.SelectMonitorDevice(body.Id); return Results.Ok(new { monitorEndpointId = coordinator.Settings.MonitorEndpointId }); });
+        app.MapPost("/api/audio/test", () => { try { var settings = coordinator.Settings; TestTone.Play(coordinator.Audio, settings.MasterVolume, coordinator.Storage, settings.MonitorLocally, settings.MonitorEndpointId); return Results.Ok(); } catch (Exception ex) { return Results.Problem(ex.Message); } });
+        app.MapPost("/api/audio/diagnose", async (HttpContext context) =>
+        {
+            var remote = context.Connection.RemoteIpAddress;
+            if (remote?.IsIPv4MappedToIPv6 == true) remote = remote.MapToIPv4();
+            if (remote is null || !System.Net.IPAddress.IsLoopback(remote)) return Results.Forbid();
+            try { return Results.Ok(await diagnostic.RunAsync(context.RequestAborted)); }
+            catch (Exception ex) { Log.Error(ex, "Steam microphone path check failed"); return Results.Problem(ex.Message); }
+        });
+        app.Map("/ws", async context => { if (context.WebSockets.IsWebSocketRequest) await hub.Accept(context); else context.Response.StatusCode = 400; });
+        try { await app.StartAsync(); _app = app; coordinator.SetActiveWebPort(port); StartedOnPort?.Invoke(port); LastError = null; Log.Information("Web server started on port {Port}", port); }
+        catch (Exception ex) { LastError = ex.Message; Log.Error(ex, "Web server startup failed"); await app.DisposeAsync(); throw; }
+    }
+    private async Task RestartAfterPortChangeAsync()
+    {
+        await Task.Delay(350);
+        try { await RestartAsync(); }
+        catch (Exception ex) { Log.Error(ex, "Could not restart web server on the requested or fallback port"); }
+    }
+    public static int FallbackPort(int preferred) => preferred == 6669 ? 6769 : 6669;
+    public static bool ShouldRestartForPortChange(int? requestedPort, int previousPreference, int activePort)
+        => requestedPort is int port && (port != previousPreference || port != activePort);
+    public static bool IsPairingAuthorized(System.Net.IPAddress? remote, string? token, string? headerToken, string? queryToken)
+    {
+        remote = AppCoordinator.NormalizeNetworkAddress(remote);
+        if (remote is null || System.Net.IPAddress.IsLoopback(remote) || string.IsNullOrEmpty(token)) return true;
+        return string.Equals(headerToken, token, StringComparison.Ordinal) || string.Equals(queryToken, token, StringComparison.Ordinal);
+    }
+    private static bool IsAddressInUse(Exception exception)
+    {
+        for (var current = exception; current is not null; current = current.InnerException)
+            if (current is SocketException socket && socket.SocketErrorCode == SocketError.AddressAlreadyInUse) return true;
+        return false;
+    }
+    public async Task StopAsync() { var app = _app; _app = null; coordinator.SetActiveWebPort(null); if (app is not null) { await app.StopAsync(); await app.DisposeAsync(); } }
+    public async Task RestartAsync() { await StopAsync(); await StartAsync(); }
+    private object View(Sound s, PlaybackState p)
+    {
+        var imageUrl = s.ImageFilename is null ? "/assets/logo.png" : $"/api/sounds/{s.Id}/image?v={Uri.EscapeDataString(s.ImageFilename)}";
+        if (s.ImageFilename is not null && !string.IsNullOrWhiteSpace(coordinator.Settings.PairingToken)) imageUrl += "&token=" + Uri.EscapeDataString(coordinator.Settings.PairingToken);
+        return new { s.Id, s.Name, s.SourceFilename, s.SortOrder, s.OutputGain, s.StartSeconds, s.EndSeconds, s.SourceDurationSeconds, duration = s.PlayDuration, s.Mode, s.Icon, s.ButtonLabel, s.CreatedUtc, imageUrl, playing = p.SoundId == s.Id, progress = p.SoundId == s.Id && s.PlayDuration > 0 ? Math.Clamp((p.PositionSeconds - s.StartSeconds) / s.PlayDuration, 0, 1) : 0 };
+    }
+    private static void ApplyPatch(Sound s, SoundPatch p) { if (p.Name is not null) s.Name = p.Name; if (p.Volume is not null) s.Volume = p.Volume.Value; if (p.OutputGain is not null) s.OutputGain = p.OutputGain.Value; if (p.StartSeconds is not null) s.StartSeconds = p.StartSeconds.Value; if (p.EndSeconds.ValueKind != JsonValueKind.Undefined) s.EndSeconds = p.EndSeconds.ValueKind == JsonValueKind.Null ? null : p.EndSeconds.GetDouble(); if (p.Mode is not null) s.Mode = p.Mode; if (p.Icon is not null) s.Icon = p.Icon; if (p.ButtonLabel is not null) s.ButtonLabel = p.ButtonLabel; }
+    private static async Task<string?> DetectImageExtension(IFormFile file)
+    {
+        await using var stream = file.OpenReadStream();
+        var head = new byte[12];
+        var read = 0;
+        while (read < head.Length)
+        {
+            var count = await stream.ReadAsync(head.AsMemory(read));
+            if (count == 0) break;
+            read += count;
+        }
+        if (read >= 8 && head.AsSpan(0, 8).SequenceEqual(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 })) return ".png";
+        if (read >= 3 && head[0] == 0xff && head[1] == 0xd8 && head[2] == 0xff) return ".jpg";
+        if (read >= 12 && head.AsSpan(0, 4).SequenceEqual("RIFF"u8) && head.AsSpan(8, 4).SequenceEqual("WEBP"u8)) return ".webp";
+        return null;
+    }
+}
+public record SoundPatch(string? Name, float? Volume, float? OutputGain, double? StartSeconds, JsonElement EndSeconds, string? Mode, string? Icon, string? ButtonLabel);
+public record SettingsPatch(int? ButtonDensity, float? MasterVolume, float? MicOutputGain, bool? LanAccess, string? PairingToken, long? MaxUploadBytes, bool? MonitorLocally, bool? ReconnectAudio, int? Port, bool ClearPairingToken = false, bool? TailscaleAccess = null);
+public record DeviceSelection(string? Id);

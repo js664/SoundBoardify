@@ -1,0 +1,65 @@
+<Window x:Class="VRSoundboard.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="VRSoundboard" Width="1100" Height="760" MinWidth="840" MinHeight="590" WindowStartupLocation="CenterScreen">
+  <Grid Margin="28">
+    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+    <DockPanel Margin="0,0,0,20">
+      <StackPanel><TextBlock Text="VRSoundboard" FontSize="27" FontWeight="SemiBold"/><TextBlock Text="Steam Link soundboard control" Foreground="{DynamicResource Muted}" Margin="0,3,0,0"/></StackPanel>
+      <TextBlock x:Name="HeaderStatus" DockPanel.Dock="Right" HorizontalAlignment="Right" VerticalAlignment="Center" Foreground="{DynamicResource Accent}" FontWeight="SemiBold"/>
+    </DockPanel>
+    <TabControl Grid.Row="1" x:Name="Tabs" Background="{DynamicResource Bg}" BorderThickness="0">
+      <TabItem Header="Dashboard"><ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="8,20,8,8">
+        <TextBlock Text="Ready to play" FontSize="23" FontWeight="SemiBold" Margin="0,0,0,16"/>
+        <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="280"/></Grid.ColumnDefinitions>
+          <StackPanel>
+            <TextBlock Text="PHONE DASHBOARD" Foreground="{DynamicResource Muted}" FontSize="12" FontWeight="SemiBold"/>
+            <TextBlock x:Name="UrlText" FontSize="20" FontWeight="SemiBold" Margin="0,7,0,12"/>
+            <WrapPanel><Button Content="Copy URL" Click="CopyUrl_Click"/><Button Content="Open dashboard" Click="OpenUrl_Click"/></WrapPanel>
+            <TextBlock Text="SERVER" Foreground="{DynamicResource Muted}" FontSize="12" FontWeight="SemiBold" Margin="0,25,0,6"/>
+            <TextBlock x:Name="ServerText" FontSize="17"/>
+            <TextBlock x:Name="ClientsText" Foreground="{DynamicResource Muted}" Margin="0,4,0,0"/>
+            <TextBlock Text="AUDIO ROUTE" Foreground="{DynamicResource Muted}" FontSize="12" FontWeight="SemiBold" Margin="0,25,0,6"/>
+            <TextBlock x:Name="AudioText" FontSize="17" TextWrapping="Wrap"/>
+            <TextBlock x:Name="EndpointText" Foreground="{DynamicResource Muted}" Margin="0,4,0,0" TextWrapping="Wrap"/>
+            <TextBlock x:Name="MonitorText" Foreground="{DynamicResource Muted}" Margin="0,4,0,0" TextWrapping="Wrap"/>
+            <WrapPanel Margin="0,20,0,0"><Button Content="Test sound" Click="Test_Click"/><Button Content="Check mic path" Click="CheckMic_Click"/><Button Content="Stop audio" Click="Stop_Click"/><Button Content="Restart audio" Click="RestartAudio_Click"/><Button Content="Restart server" Click="RestartServer_Click"/></WrapPanel>
+            <TextBlock x:Name="MicCheckText" Foreground="{DynamicResource Muted}" Margin="0,4,0,0" TextWrapping="Wrap"/>
+          </StackPanel>
+          <Border Grid.Column="1" Background="White" Padding="15" Width="228" Height="228" VerticalAlignment="Top" HorizontalAlignment="Right"><Image x:Name="QrImage" Stretch="Uniform"/></Border>
+        </Grid>
+      </StackPanel></ScrollViewer></TabItem>
+      <TabItem Header="Sounds"><Grid Margin="8,20,8,8"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+        <DockPanel Margin="0,0,0,12"><StackPanel><TextBlock Text="Sound library" FontSize="23" FontWeight="SemiBold"/><TextBlock Text="Drag rows to reorder. Double click to edit." Foreground="{DynamicResource Muted}"/></StackPanel>
+          <WrapPanel DockPanel.Dock="Right" HorizontalAlignment="Right"><Button Content="Add sounds" Click="Add_Click"/><Button Content="Play selected" Click="Play_Click"/><Button Content="Edit" Click="Edit_Click"/><Button Content="Delete" Click="Delete_Click"/></WrapPanel>
+        </DockPanel>
+        <DataGrid Grid.Row="1" x:Name="SoundsGrid" AutoGenerateColumns="False" CanUserAddRows="False" IsReadOnly="True" Background="{DynamicResource Panel}" Foreground="{DynamicResource Text}" BorderBrush="{DynamicResource Border}" RowBackground="{DynamicResource Panel}" AlternatingRowBackground="{DynamicResource AltPanel}" SelectionMode="Single" MouseDoubleClick="Grid_DoubleClick" PreviewMouseLeftButtonDown="Grid_MouseDown" PreviewMouseMove="Grid_MouseMove" Drop="Grid_Drop" AllowDrop="True">
+          <DataGrid.Columns><DataGridTextColumn Header="" Binding="{Binding PlaybackStatus}" Width="80"/><DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="*"/><DataGridTextColumn Header="Mode" Binding="{Binding Mode}" Width="100"/><DataGridTextColumn Header="Volume" Binding="{Binding OutputGain, StringFormat=P0}" Width="90"/><DataGridTextColumn Header="Duration" Binding="{Binding PlayDuration, StringFormat=F1}" Width="90"/><DataGridTextColumn Header="Source" Binding="{Binding SourceFilename}" Width="180"/></DataGrid.Columns>
+        </DataGrid>
+      </Grid></TabItem>
+      <TabItem Header="Audio"><StackPanel Margin="8,20,8,8"><TextBlock Text="Audio output" FontSize="23" FontWeight="SemiBold"/><TextBlock Text="Select the Steam Streaming Microphone speakers endpoint. Windows defaults are never changed." Foreground="{DynamicResource Muted}" Margin="0,5,0,17" TextWrapping="Wrap"/><ComboBox x:Name="DeviceCombo" DisplayMemberPath="Name" SelectionChanged="DeviceCombo_SelectionChanged" Width="650" HorizontalAlignment="Left"/><WrapPanel Margin="0,13,0,0"><Button Content="Refresh devices" Click="RefreshDevices_Click"/><Button Content="Use selected device" Click="SelectDevice_Click"/><Button Content="Reconnect" Click="RestartAudio_Click"/></WrapPanel><TextBlock x:Name="DeviceDetails" TextWrapping="Wrap" FontFamily="Consolas" Foreground="{DynamicResource Muted}" Margin="0,15,0,0"/></StackPanel></TabItem>
+      <TabItem Header="Web dashboard">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+          <StackPanel Margin="8,20,8,8">
+            <TextBlock Text="Phone connection" FontSize="23" FontWeight="SemiBold"/>
+            <TextBlock x:Name="WebUrlText" FontSize="18" Margin="0,12,0,12"/>
+            <WrapPanel><Button Content="Open dashboard" Click="OpenUrl_Click"/><Button Content="Restart server" Click="RestartServer_Click"/></WrapPanel>
+            <TextBlock x:Name="WebDetails" Foreground="{DynamicResource Muted}" Margin="0,12,0,0"/>
+            <TextBlock Text="Button density" Margin="0,25,0,7"/>
+            <ComboBox x:Name="DensityCombo" Width="120" HorizontalAlignment="Left" SelectionChanged="Density_Changed">
+              <ComboBoxItem Content="6"/><ComboBoxItem Content="9"/><ComboBoxItem Content="12"/><ComboBoxItem Content="15"/><ComboBoxItem Content="20"/>
+            </ComboBox>
+            <CheckBox x:Name="LanCheck" Content="Allow local network access" Margin="0,22,0,0" Click="Lan_Click"/>
+            <CheckBox x:Name="WebCheck" Content="Web server enabled" Margin="0,10,0,0" Click="Web_Click"/>
+            <TextBlock Text="Port" Margin="0,20,0,5"/>
+            <WrapPanel><TextBox x:Name="PortBox" Width="100"/><Button Content="Save port" Margin="10,0,0,0" Click="Port_Click"/></WrapPanel>
+            <TextBlock Text="Pairing token (optional)" Margin="0,20,0,5"/>
+            <WrapPanel><TextBox x:Name="TokenBox" Width="260"/><Button Content="Save token" Margin="10,0,0,0" Click="Token_Click"/></WrapPanel>
+            <TextBlock Text="Upload limit (MB)" Margin="0,20,0,5"/>
+            <WrapPanel><TextBox x:Name="LimitBox" Width="100"/><Button Content="Save limit" Margin="10,0,0,0" Click="Limit_Click"/></WrapPanel>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+      <TabItem Header="Settings"><ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="8,20,8,8"><TextBlock Text="Preferences" FontSize="23" FontWeight="SemiBold"/><TextBlock Text="Master soundboard volume" Margin="0,25,0,5"/><Slider x:Name="MasterSlider" Minimum="0" Maximum="1" TickFrequency="0.05" Width="300" HorizontalAlignment="Left" ValueChanged="Master_Changed"/><TextBlock x:Name="MasterText" Foreground="{DynamicResource Muted}"/><TextBlock Text="Steam microphone level" Margin="0,20,0,5"/><Slider x:Name="MicSlider" Minimum="0" Maximum="0.25" TickFrequency="0.005" Width="300" HorizontalAlignment="Left" ValueChanged="Mic_Changed"/><TextBlock x:Name="MicText" Foreground="{DynamicResource Muted}"/><CheckBox x:Name="MonitorCheck" Content="Hear soundboard through the default PC output" Margin="0,20,0,0" Click="Monitor_Click"/><CheckBox x:Name="ReconnectCheck" Content="Reconnect audio automatically" Margin="0,10,0,0" Click="Reconnect_Click"/><CheckBox x:Name="MinimizedCheck" Content="Start minimized" Margin="0,10,0,0" Click="Minimized_Click"/><CheckBox x:Name="TrayCheck" Content="Minimize to tray" Margin="0,10,0,0" Click="Tray_Click"/><CheckBox x:Name="WindowsCheck" Content="Start with Windows" Margin="0,10,0,0" Click="Windows_Click"/><TextBlock Text="Theme" Margin="0,20,0,5"/><ComboBox x:Name="ThemeBox" Width="145" HorizontalAlignment="Left" SelectionChanged="Theme_Changed"><ComboBoxItem Content="system"/><ComboBoxItem Content="dark"/><ComboBoxItem Content="light"/></ComboBox><TextBlock Text="Data location" Margin="0,25,0,5"/><TextBlock x:Name="DataPathText" Foreground="{DynamicResource Muted}"/><Button Content="Open data folder" HorizontalAlignment="Left" Margin="0,10,0,0" Click="OpenData_Click"/></StackPanel></ScrollViewer></TabItem>
+      <TabItem Header="Diagnostics"><Grid Margin="8,20,8,8"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions><DockPanel Margin="0,0,0,12"><TextBlock Text="Diagnostics" FontSize="23" FontWeight="SemiBold"/><WrapPanel DockPanel.Dock="Right"><Button Content="Refresh logs" Click="Logs_Click"/><Button Content="Copy logs" Click="CopyLogs_Click"/></WrapPanel></DockPanel><TextBox x:Name="LogsText" Grid.Row="1" FontFamily="Consolas" FontSize="12" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"/></Grid></TabItem>
+    </TabControl>
+    <DockPanel Grid.Row="2" Margin="0,14,0,0"><TextBlock Text="Local control · Port 6769" Foreground="{DynamicResource Muted}"/><Button Content="STOP ALL AUDIO" DockPanel.Dock="Right" HorizontalAlignment="Right" Background="#713B42" BorderBrush="#A75F68" FontWeight="Bold" Click="Stop_Click"/></DockPanel>
+  </Grid>
+</Window>

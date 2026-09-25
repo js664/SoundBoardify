@@ -1,0 +1,7 @@
+# Interface direction
+
+Mode: Operate. The app is used during gaming, often at a glance in a dim room, so the default surface is a restrained dark control panel with high-contrast type, a mint readiness accent, and a muted red stop action. Light and system themes are available in desktop settings.
+
+The Electron desktop dashboard is a compact soundboard with clear play, add, stop, and Settings actions. Settings expose audio routing and phone connectivity. The phone soundboard is a mobile-first artwork grid: every sound uses its chosen cover image or `assets/logo.png`, with its title at the bottom of the tile and editing behind a three-dot button. A flow-positioned sticky header keeps Add and Select visible without covering the tiles. Selection mode reveals bulk delete and per-tile checkmarks. The currently playing tile gains a lime outline and a small meter; tapping it again stops it. Editing uses a mobile bottom sheet and keeps trimming and playback behavior in expandable options.
+
+The Windows Electron app and phone surface share a quiet midnight-studio palette: soot-black canvas, graphite borders, bone-white labels, and a sharp lime primary accent. DM Sans is bundled locally so the LAN interface loads without an external font service. Motion is brief and tied to tile entry, press feedback, playback, or editor presentation. Artwork shade is used only to keep button names readable. Color is reserved for readiness, playback, primary actions, and destructive actions.

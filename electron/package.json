@@ -1,0 +1,80 @@
+{
+  "name": "soundboardify-desktop",
+  "version": "1.0.0",
+  "description": "Open-source Windows soundboard with a phone-controlled web UI",
+  "author": "Soundboardify contributors",
+  "license": "MIT",
+  "main": "main.cjs",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test version-utils.test.cjs",
+    "build:icon": "node make-icon.cjs",
+    "build:ui": "npm --prefix ../webui ci && npm --prefix ../webui run build",
+    "build:backend": "node clean-backend-stage.cjs && dotnet publish ../VRSoundboard.csproj -c Release -r win-x64 --self-contained true -o ../obj/electron-backend && node write-backend-manifest.cjs",
+    "build": "npm run build:icon && npm run build:ui && npm run build:backend",
+    "dist": "npm run build && electron-builder --win portable"
+  },
+  "build": {
+    "appId": "com.soundboardify.desktop",
+    "productName": "Soundboardify",
+    "asar": true,
+    "directories": {
+      "output": "../dist-electron"
+    },
+    "files": [
+      "main.cjs",
+      "preload.cjs",
+      "version-utils.cjs",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../obj/electron-backend",
+        "to": "backend",
+        "filter": [
+          "**/*.dll",
+          "VRSoundboard.exe",
+          "VRSoundboard.deps.json",
+          "VRSoundboard.runtimeconfig.json",
+          "backend-manifest.json",
+          "Web/**/*",
+          "!dist-electron/**",
+          "!electron/**",
+          "!webui/**",
+          "!tests/**",
+          "!**/bin/**",
+          "!**/obj/**"
+        ]
+      },
+      {
+        "from": "soundboardify.ico",
+        "to": "app-icon.ico"
+      },
+      {
+        "from": "firewall-setup.ps1",
+        "to": "firewall-setup.ps1"
+      }
+    ],
+    "win": {
+      "icon": "soundboardify.ico",
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "portable": {
+      "artifactName": "Soundboardify-${version}-Windows.${ext}"
+    }
+  },
+  "devDependencies": {
+    "electron": "^44.4.5",
+    "electron-builder": "^26.0.12",
+    "png-to-ico": "^3.0.2",
+    "pngjs": "^7.0.0"
+  }
+}
