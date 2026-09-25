@@ -3,7 +3,7 @@
 </div>
 
 <div align="center">
-  <h1>Make any sound one tap away.</h1>
+  <h1>SoundBoardify.</h1>
   <p><i>A fast, open-source soundboard for Windows, controlled from your phone.</i></p>
 </div>
 
