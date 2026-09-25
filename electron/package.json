@@ -13,7 +13,7 @@
     "build:ui": "npm --prefix ../webui ci && npm --prefix ../webui run build",
     "build:backend": "node clean-backend-stage.cjs && dotnet publish ../VRSoundboard.csproj -c Release -r win-x64 --self-contained true -o ../obj/electron-backend && node write-backend-manifest.cjs",
     "build": "npm run build:icon && npm run build:ui && npm run build:backend",
-    "dist": "npm run build && electron-builder --win portable"
+    "dist": "npm run build && electron-builder --win nsis portable"
   },
   "build": {
     "appId": "com.soundboardify.desktop",
@@ -60,6 +60,12 @@
       "icon": "soundboardify.ico",
       "target": [
         {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
           "target": "portable",
           "arch": [
             "x64"
@@ -69,6 +75,14 @@
     },
     "portable": {
       "artifactName": "Soundboardify-${version}-Windows.${ext}"
+    },
+    "nsis": {
+      "artifactName": "Soundboardify-${version}-Setup.${ext}",
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
     }
   },
   "devDependencies": {

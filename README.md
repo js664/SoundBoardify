@@ -24,7 +24,7 @@ Play clips from your PC or tap them from your phone on the same Wi-Fi. Add artwo
 - **Your audio devices** with Windows defaults detected automatically and optional local monitoring.
 - **Your layout** with custom images, button ordering, and a mobile-first board.
 
-Download a Windows build from [Releases](https://github.com/js664/SoundBoardify/releases). Open Soundboardify and scan the **Wi-Fi / LAN QR** with your phone. If Windows blocks the connection, choose **Allow app in Windows Firewall** in Settings and approve the prompt. Tailscale is off by default.
+Download the Windows **installer** or **portable app** from [Releases](https://github.com/js664/SoundBoardify/releases). The installer adds Start Menu and optional desktop shortcuts; the portable app runs without installation. Open Soundboardify and scan the **Wi-Fi / LAN QR** with your phone. If Windows blocks the connection, choose **Allow app in Windows Firewall** in Settings and approve the prompt. Tailscale is off by default.
 
 ## Build it yourself
 
@@ -38,7 +38,7 @@ npm ci
 npm run dist
 ```
 
-The portable app is created at `dist-electron/Soundboardify-<version>-Windows.exe`. Run `npm test` from `electron/` for the update-check tests, and `dotnet test tests/SoundBoardify.Tests/SoundBoardify.Tests.csproj -c Release -r win-x64` from the project root for the audio and application tests.
+The installer and portable app are created in `dist-electron/`. Run `npm test` from `electron/` for the update-check tests, and `dotnet test tests/SoundBoardify.Tests/SoundBoardify.Tests.csproj -c Release -r win-x64` from the project root for the audio and application tests.
 
 GitHub Actions runs the tests and builds the Windows app. To publish a release, update the version in `electron/package.json` and its lockfile, push a matching `vX.Y.Z` tag, then attach that run’s Windows artifact to a GitHub Release.
 

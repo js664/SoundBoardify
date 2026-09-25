@@ -59,14 +59,16 @@ jobs:
       - name: Test audio and application behavior
         run: dotnet test tests/SoundBoardify.Tests/SoundBoardify.Tests.csproj -c Release -r win-x64
 
-      - name: Build portable Windows app
+      - name: Build Windows installer and portable app
         run: npm run dist
         working-directory: electron
 
-      - name: Upload portable app
+      - name: Upload Windows releases
         uses: actions/upload-artifact@v4
         with:
           name: Soundboardify-Windows-x64
-          path: dist-electron/Soundboardify-*-Windows.exe
+          path: |
+            dist-electron/Soundboardify-*-Setup.exe
+            dist-electron/Soundboardify-*-Windows.exe
           if-no-files-found: error
           retention-days: 14
