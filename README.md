@@ -1,14 +1,17 @@
 <div align="center">
-  <img src="assets/banner.png" alt="Soundboardify — a soundboard for Windows" width="100%" />
-
-  <h1>Make any sound one tap away.</h1>
-  <p>A fast soundboard for Windows, controlled from your phone.</p>
-  <p>
-    <a href="https://github.com/js664/SoundBoardify/releases">Releases</a> ·
-    <a href="#build-it-yourself">Build it yourself</a> ·
-    <a href="https://github.com/js664/SoundBoardify/issues">Report a bug</a>
-  </p>
+  <img width="217" height="217" src="assets/logo.png" alt="Soundboardify logo" />
 </div>
+
+<div align="center">
+  <h1>Make any sound one tap away.</h1>
+  <p><i>A fast, open-source soundboard for Windows, controlled from your phone.</i></p>
+</div>
+
+<p align="center">
+  <a href="https://github.com/js664/SoundBoardify/releases">Releases</a> &nbsp;|&nbsp;
+  <a href="#build-it-yourself">Build it yourself</a> &nbsp;|&nbsp;
+  <a href="https://github.com/js664/SoundBoardify/issues">Report a bug</a>
+</p>
 
 <p align="center">
   <a href="https://github.com/js664/SoundBoardify/actions/workflows/windows-build.yml"><img src="https://github.com/js664/SoundBoardify/actions/workflows/windows-build.yml/badge.svg" alt="Windows build" /></a>
