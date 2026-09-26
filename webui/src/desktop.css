@@ -495,11 +495,11 @@
 .options-only .studio-nav-item.active .nav-symbol { color: #acd0ff; background: #344b69; }
 .options-only .sidebar-health { border-top-color: #303238; }
 .options-only .sidebar-health>i.connected { box-shadow: 0 0 0 3px rgba(105,211,155,.1),0 0 11px rgba(105,211,155,.27); }
-.options-only .open-soundboard { min-height: 36px; padding-inline: 14px; border: 1px solid #4a86f5; border-radius: 8px; font-size: 12px; font-weight: 600; box-shadow: 0 3px 11px rgba(35,91,190,.17); transition: background .17s ease,border-color .17s ease,box-shadow .17s ease,transform .17s ease; }
-.options-only .open-soundboard:hover { background: #4384fa; border-color: #6da0ff; box-shadow: 0 6px 17px rgba(35,91,190,.25); transform: translateY(-1px); }
+.options-only .open-soundboard { min-height: 36px; padding-inline: 14px; border: 1px solid #4a86f5; border-radius: 8px; font-size: 12px; font-weight: 600; box-shadow: none; transition: background .17s ease,border-color .17s ease,transform .17s ease; }
+.options-only .open-soundboard:hover { background: #4384fa; border-color: #6da0ff; transform: none; }
 .options-only .open-soundboard:active { transform: scale(.98); }
 .options-only .open-soundboard[aria-disabled="true"] { opacity: .55; cursor: wait; pointer-events: auto; }
-.options-only .connect-panel { background: linear-gradient(155deg,#2a2c31,#27292e 68%); border-color: #3b3e46; box-shadow: 0 12px 30px rgba(0,0,0,.09); }
+.options-only .connect-panel { background: var(--desk-surface); border-color: var(--desk-line); box-shadow: none; }
 .options-only .qr-frame img { border: 1px solid rgba(255,255,255,.82); box-shadow: 0 5px 18px rgba(0,0,0,.16); }
 .options-only .phone-link-field { border-color: #3c414a; background: #222429; }
 .options-only .phone-link-field a { font-size: 12px; }
