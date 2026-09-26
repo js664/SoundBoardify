@@ -1,4 +1,5 @@
 using System.IO;
+using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using NAudio.Wave;
 using VRSoundboard;
@@ -146,6 +147,48 @@ public sealed class SoundLibraryTests
             Assert.Equal(new[] { 0, 1, 2 }, library.All.Select(sound => sound.SortOrder));
             Assert.Equal(expected, new SoundLibrary(storage).All.Select(sound => sound.Id));
             Assert.Equal(new[] { 0, 1, 2 }, storage.LoadSounds().Select(sound => sound.SortOrder));
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void HotkeyAssignmentsReturnOnlyAssignedSoundsInLibraryOrder()
+    {
+        var root = CreateRoot();
+        try
+        {
+            var storage = new Storage(root);
+            storage.Initialize();
+            var sounds = new[] { CreateSound(0), CreateSound(1), CreateSound(2) };
+            sounds[0].Hotkey = "Control+Alt+A";
+            sounds[2].Hotkey = "Control+Alt+C";
+            foreach (var sound in sounds) storage.Save(sound);
+            var library = new SoundLibrary(storage);
+
+            var assignments = library.HotkeyAssignments;
+            Assert.Same(assignments, library.HotkeyAssignments);
+            Assert.Equal(
+                [
+                    new SoundHotkeyAssignment(sounds[0].Id, sounds[0].Name, "Control+Alt+A"),
+                    new SoundHotkeyAssignment(sounds[2].Id, sounds[2].Name, "Control+Alt+C"),
+                ],
+                assignments);
+            using (var payload = JsonDocument.Parse(JsonSerializer.Serialize(assignments, new JsonSerializerOptions(JsonSerializerDefaults.Web))))
+                Assert.Equal(new[] { "id", "name", "hotkey" }, payload.RootElement[0].EnumerateObject().Select(property => property.Name));
+
+            library.Update(sounds[2].Id, sound => sound.Name = "Renamed sound");
+            var renamed = library.HotkeyAssignments;
+            Assert.NotSame(assignments, renamed);
+            Assert.Equal("Renamed sound", renamed[1].Name);
+
+            library.Reorder([sounds[2].Id, sounds[1].Id, sounds[0].Id]);
+            Assert.Equal(
+                [sounds[2].Id, sounds[0].Id],
+                library.HotkeyAssignments.Select(assignment => assignment.Id));
         }
         finally
         {

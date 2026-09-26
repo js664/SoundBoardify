@@ -161,7 +161,7 @@ public sealed class WebServerService(AppCoordinator coordinator, WebSocketHub hu
             catch (Exception ex) when (ex is NotSupportedException or NAudio.MmException or System.Runtime.InteropServices.COMException)
             { Log.Warning(ex, "Marketplace sound could not be decoded {SourceId}", entry.Id); return Results.BadRequest("This sound could not be decoded as audio."); }
         });
-        app.MapGet("/api/hotkeys", () => Results.Ok(coordinator.Library.All.Where(sound => !string.IsNullOrWhiteSpace(sound.Hotkey)).Select(sound => new { sound.Id, sound.Name, sound.Hotkey })));
+        app.MapGet("/api/hotkeys", () => Results.Ok(coordinator.Library.HotkeyAssignments));
         app.MapPost("/api/hotkeys/{id:guid}/trigger", (Guid id) =>
         {
             var sound = coordinator.Library.Get(id);

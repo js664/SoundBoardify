@@ -6,6 +6,16 @@ using System.Runtime.InteropServices;
 
 namespace VRSoundboard;
 
+internal static class AudioResourceCleanup
+{
+    public static void Dispose(IDisposable? resource, string description)
+    {
+        if (resource is null) return;
+        try { resource.Dispose(); }
+        catch (Exception ex) { Log.Warning(ex, "Could not dispose {AudioResource}", description); }
+    }
+}
+
 public sealed class AudioDeviceService(AudioExecutionContext context) : IDisposable
 {
     private MMDeviceEnumerator? _enumerator;
@@ -22,7 +32,7 @@ public sealed class AudioDeviceService(AudioExecutionContext context) : IDisposa
                 try { var f = d.AudioClient.MixFormat; result.Add(new DeviceInfo(id, name, state, f.ToString(), f.SampleRate, f.Channels, id == selectedId)); }
                 catch { result.Add(new DeviceInfo(id, name, state, "Unavailable", 0, 0, id == selectedId)); }
             }
-            finally { d.Dispose(); }
+            finally { AudioResourceCleanup.Dispose(d, "an enumerated audio endpoint"); }
         }
         return result;
     }
@@ -36,7 +46,7 @@ public sealed class AudioDeviceService(AudioExecutionContext context) : IDisposa
         }
         var devices = Enumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active).ToList();
         var selected = devices.FirstOrDefault(d => d.ID == selectedId);
-        foreach (var device in devices) if (!ReferenceEquals(device, selected)) device.Dispose();
+        foreach (var device in devices) if (!ReferenceEquals(device, selected)) AudioResourceCleanup.Dispose(device, "an unused audio endpoint");
         return selected;
     }
     public (bool CurrentEndpointActive, string? DefaultEndpointId) GetReconnectState(string? currentId, bool followsWindowsDefault)
@@ -68,7 +78,7 @@ public sealed class AudioDeviceService(AudioExecutionContext context) : IDisposa
             }
             return (active, defaultId);
         }
-        finally { defaultDevice?.Dispose(); }
+        finally { AudioResourceCleanup.Dispose(defaultDevice, "the Windows default audio endpoint"); }
     }
     public MMDevice DefaultRender() => context.IsCurrent ? Enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Console) : context.Invoke(DefaultRender);
     public MMDevice? SteamCapture()
@@ -76,7 +86,7 @@ public sealed class AudioDeviceService(AudioExecutionContext context) : IDisposa
         if (!context.IsCurrent) return context.Invoke(SteamCapture);
         var devices = Enumerator.EnumerateAudioEndPoints(DataFlow.Capture, DeviceState.Active).ToList();
         var selected = devices.FirstOrDefault(d => d.FriendlyName.Contains("Steam Streaming Microphone", StringComparison.OrdinalIgnoreCase));
-        foreach (var device in devices) if (!ReferenceEquals(device, selected)) device.Dispose();
+        foreach (var device in devices) if (!ReferenceEquals(device, selected)) AudioResourceCleanup.Dispose(device, "an unused capture endpoint");
         return selected;
     }
     public string? DefaultRenderName() => context.Invoke(() =>
@@ -98,7 +108,7 @@ public sealed class AudioDeviceService(AudioExecutionContext context) : IDisposa
             return null;
         }
     }
-    public void Dispose() => context.Invoke(() => { _enumerator?.Dispose(); _enumerator = null; });
+    public void Dispose() => context.Invoke(() => { AudioResourceCleanup.Dispose(_enumerator, "the audio device enumerator"); _enumerator = null; });
 }
 
 public sealed class AudioEngine(AudioDeviceService devices, Storage storage, AudioExecutionContext context) : IDisposable
@@ -141,7 +151,7 @@ public sealed class AudioEngine(AudioDeviceService devices, Storage storage, Aud
         {
             _selectedId = selectedId;
             stopped = _soundId;
-            StopLocked(); DisconnectOutputLocked(); _device?.Dispose(); _device = null; _endpointId = null; _endpointName = null;
+            StopLocked(); DisconnectOutputLocked(); AudioResourceCleanup.Dispose(_device, "the previous playback endpoint"); _device = null; _endpointId = null; _endpointName = null;
             try
             {
                 _device = devices.Resolve(selectedId);
@@ -169,7 +179,15 @@ public sealed class AudioEngine(AudioDeviceService devices, Storage storage, Aud
                 }
                 Log.Information("Audio endpoint: {Status} {Endpoint}", _status, _device?.FriendlyName);
             }
-            catch (Exception ex) { _status = "Audio device error: " + ex.Message; Log.Error(ex, "Audio connection failed"); }
+            catch (Exception ex)
+            {
+                StopLocked();
+                DisconnectOutputLocked();
+                AudioResourceCleanup.Dispose(_device, "a playback endpoint after connection failed");
+                _device = null; _endpointId = null; _endpointName = null;
+                _status = "Audio device error: " + ex.Message;
+                Log.Error(ex, "Audio connection failed");
+            }
         }
         if (stopped is not null) Changed?.Invoke("sound-stopped", new { id = stopped });
         Changed?.Invoke("audio-device", new { status = Status, endpoint = EndpointName });
@@ -202,7 +220,7 @@ public sealed class AudioEngine(AudioDeviceService devices, Storage storage, Aud
                 try { _source.Replace(preparedReader, mainPipeline.WaveProvider); }
                 catch
                 {
-                    if (mainPipeline.WaveProvider is IDisposable disposable) disposable.Dispose();
+                    if (mainPipeline.WaveProvider is IDisposable disposable) AudioResourceCleanup.Dispose(disposable, "an unstarted sound output pipeline");
                     throw;
                 }
                 preparedReader = null;
@@ -242,12 +260,12 @@ public sealed class AudioEngine(AudioDeviceService devices, Storage storage, Aud
                                 try { _monitorSource.Replace(monitorReader, monitorPipeline.WaveProvider); }
                                 catch
                                 {
-                                    if (monitorPipeline.WaveProvider is IDisposable disposable) disposable.Dispose();
+                                    if (monitorPipeline.WaveProvider is IDisposable disposable) AudioResourceCleanup.Dispose(disposable, "an unstarted monitor output pipeline");
                                     throw;
                                 }
                                 monitorReader = null;
                             }
-                            finally { monitorReader?.Dispose(); }
+                            finally { AudioResourceCleanup.Dispose(monitorReader, "a local monitor sound reader"); }
                             _monitorGainStage = monitorPipeline.GainStage;
                             _monitorGainMultiplier = masterVolume;
                         }
@@ -262,7 +280,7 @@ public sealed class AudioEngine(AudioDeviceService devices, Storage storage, Aud
             }
             catch (Exception ex)
             {
-                preparedReader?.Dispose();
+                AudioResourceCleanup.Dispose(preparedReader, "a sound reader after playback failed");
                 StopLocked(); _status = "Playback failed: " + ex.Message; Log.Error(ex, "Playback failed");
                 Changed?.Invoke("audio-device", new { status = _status, endpoint = EndpointName });
                 throw;
@@ -335,8 +353,8 @@ public sealed class AudioEngine(AudioDeviceService devices, Storage storage, Aud
         _monitorSource?.Clear(); _monitorSource = null; _monitorGainStage = null;
         var output = _monitorOutput; _monitorOutput = null;
         try { output?.Stop(); } catch { }
-        output?.Dispose();
-        _monitorDevice?.Dispose(); _monitorDevice = null; _monitorEndpointName = null;
+        AudioResourceCleanup.Dispose(output, "the local monitor output");
+        AudioResourceCleanup.Dispose(_monitorDevice, "the local monitor endpoint"); _monitorDevice = null; _monitorEndpointName = null;
         _monitorEndpointId = null;
     }
     private void DisconnectOutputLocked()
@@ -345,12 +363,12 @@ public sealed class AudioEngine(AudioDeviceService devices, Storage storage, Aud
         _source?.Clear(); _source = null; _gainStage = null;
         var output = _output; _output = null;
         try { output?.Stop(); } catch { }
-        output?.Dispose();
+        AudioResourceCleanup.Dispose(output, "the soundboard output");
     }
     public void Dispose()
     {
         if (!context.IsCurrent) { context.Invoke(Dispose); return; }
-        lock (_gate) { StopLocked(); DisconnectOutputLocked(); _device?.Dispose(); _device = null; }
+        lock (_gate) { StopLocked(); DisconnectOutputLocked(); AudioResourceCleanup.Dispose(_device, "the soundboard endpoint"); _device = null; }
     }
 }
 

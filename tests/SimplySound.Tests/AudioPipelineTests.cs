@@ -12,6 +12,16 @@ namespace SimplySound.Tests;
 
 public sealed class AudioPipelineTests
 {
+    [Fact]
+    public void AudioResourceCleanupContainsEndpointDisposalFailures()
+    {
+        var resource = new ThrowingDisposable();
+
+        AudioResourceCleanup.Dispose(resource, "test endpoint");
+
+        Assert.True(resource.Disposed);
+    }
+
     [Theory]
     [InlineData("Control+Alt+k", "Control+Alt+K")]
     [InlineData("Control+Alt+7", "Control+Alt+7")]
@@ -393,6 +403,16 @@ public sealed class AudioPipelineTests
             return size;
         }
         public void Dispose() => Disposed = true;
+    }
+
+    private sealed class ThrowingDisposable : IDisposable
+    {
+        public bool Disposed { get; private set; }
+        public void Dispose()
+        {
+            Disposed = true;
+            throw new InvalidOperationException("Endpoint disconnected during disposal.");
+        }
     }
 
     private sealed class BlockingDisposeByteSource(WaveFormat waveFormat, TaskCompletionSource disposalStarted, ManualResetEventSlim allowDisposal) : IWaveProvider, IDisposable

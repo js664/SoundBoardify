@@ -215,6 +215,10 @@
 .about-panel>div p, .about-panel>div small { margin: 0; color: var(--desk-muted); font-size: 12px; line-height: 1.45; }
 .beta-pill { margin-left: auto; padding: 4px 8px; color: var(--desk-muted); background: #303033; border-radius: 5px; font-size: 10px; font-weight: 500; white-space: nowrap; }
 .desktop-loading { padding: 32px 0; color: var(--desk-muted); font-size: 13px; }
+.options-only .desktop-loading.has-error { display: grid; max-width: 520px; justify-items: start; gap: 13px; padding: 20px 0; color: #f1d9a9; line-height: 1.55; }
+.options-only .desktop-loading.has-error button { min-height: 36px; padding: 0 13px; color: #fff; background: var(--desk-blue); border: 0; border-radius: 7px; font-size: 12px; font-weight: 550; cursor: pointer; transition: background .18s ease,transform .18s ease; }
+.options-only .desktop-loading.has-error button:hover { background: var(--desk-blue-hover); transform: translateY(-1px); }
+.options-only .audio-device-warning { margin: 12px 0 0; padding: 10px 12px; color: #f1d9a9; background: #2c281f; border: 1px solid #4b412d; border-radius: 8px; font-size: 11px; line-height: 1.45; }
 .desktop-toast { position: fixed; z-index: 40; right: 22px; bottom: 20px; max-width: min(90vw, 560px); padding: 11px 14px; color: var(--desk-text); background: #303033; border: 1px solid var(--desk-line-strong); border-radius: 8px; box-shadow: 0 8px 28px rgba(0,0,0,.34); font-size: 13px; animation: menu-in .16s ease both; }
 
 .setup-guide-link { display: flex; width: 100%; min-height: 58px; align-items: center; justify-content: space-between; gap: 14px; margin: 0; padding: 9px 2px; color: var(--desk-text); background: transparent; border: 0; border-bottom: 1px solid var(--desk-line); text-align: left; cursor: pointer; }
@@ -522,60 +526,67 @@
 .options-only .version-release:hover { box-shadow: 0 4px 13px rgba(35,91,190,.22); transform: translateY(-1px); }
 .options-only .studio-nav-item:active,.options-only .sidebar-setup:active { transform: scale(.99); }
 
-/* The setup guide shares the desktop palette and uses color only for state. */
+/* Setup uses the same neutral charcoal surfaces as the desktop shell. */
 .options-only .welcome-dialog {
-  --welcome-panel: #202632;
-  --welcome-panel-raised: #1a202b;
-  --welcome-line: #354052;
-  --welcome-text: #f1f5fb;
-  --welcome-muted: #b6c0ce;
-  --welcome-subtle: #95a2b4;
-  --welcome-blue: #4f8fff;
-  --welcome-blue-hover: #70a5ff;
+  --welcome-panel: #24262b;
+  --welcome-panel-raised: #1c1e23;
+  --welcome-line: #383b43;
+  --welcome-text: #f1f3f7;
+  --welcome-muted: #b1b8c4;
+  --welcome-subtle: #929aa8;
+  --welcome-blue: #4e89f5;
+  --welcome-blue-hover: #6b9eff;
   color: var(--welcome-text);
   background: var(--welcome-panel);
   border-color: var(--welcome-line);
-  box-shadow: 0 30px 90px rgba(0,0,0,.62), 0 1px 0 rgba(255,255,255,.045) inset;
+  box-shadow: 0 30px 86px rgba(0,0,0,.58), 0 1px 0 rgba(255,255,255,.035) inset;
 }
-.options-only .welcome-header,.options-only .welcome-footer { background: #1d2430; border-color: var(--welcome-line); }
+.options-only .welcome-header,.options-only .welcome-footer { background: #202227; border-color: var(--welcome-line); }
 .options-only .welcome-brand small,.options-only .welcome-progress-step { color: var(--welcome-subtle); }
-.options-only .welcome-later { color: #c0d4f6 !important; }
-.options-only .welcome-later:hover { color: var(--welcome-text) !important; background: #2c3543; }
-.options-only .welcome-progress-step:not(:last-child)::after { background: var(--welcome-line); }
+.options-only .welcome-later { color: #a9c7fb !important; }
+.options-only .welcome-later:hover { color: var(--welcome-text) !important; background: #30333a; }
+.options-only .welcome-progress-step:not(:last-child)::after { background: #3a3d45; }
 .options-only .welcome-progress-step.done:not(:last-child)::after { background: var(--welcome-blue); }
-.options-only .welcome-progress-step i { color: #d2dbe8; background: #293241; border: 1px solid #46536a; }
+.options-only .welcome-progress-step i { color: #c4cad4; background: #2b2e34; border: 1px solid #41454f; }
 .options-only .welcome-progress-step.current { color: var(--welcome-text); }
-.options-only .welcome-progress-step.current i { background: var(--welcome-blue); border-color: #83adfb; box-shadow: 0 0 0 4px rgba(75,134,245,.17); }
-.options-only .welcome-progress-step.done i { color: white; background: #3d73cc; border-color: #5788dc; }
+.options-only .welcome-progress-step.current i { background: var(--welcome-blue); border-color: #85adf5; box-shadow: 0 0 0 4px rgba(78,137,245,.16); }
+.options-only .welcome-progress-step.done i { color: white; background: #386fca; border-color: #5283d2; }
 .options-only .welcome-eyebrow { color: #a9c8ff; }
-.options-only .welcome-content h1,.options-only .welcome-choice strong,.options-only .firewall-result strong,.options-only .welcome-finish-card strong { color: var(--welcome-text); }
-.options-only .welcome-lead,.options-only .welcome-choice small,.options-only .welcome-finish-card small,.options-only .manual-firewall-toggle small,.options-only .manual-command-panel>p { color: var(--welcome-muted); }
-.options-only .welcome-hero-mark { background: #2b3038; border: 1px solid #404753; box-shadow: 0 9px 26px rgba(0,0,0,.25); }
+.options-only .welcome-content h1,.options-only .welcome-choice strong,.options-only .firewall-result strong,.options-only .welcome-finish-card strong,.options-only .manual-firewall-toggle strong,.options-only .manual-command-panel>p strong { color: var(--welcome-text); }
+.options-only .welcome-lead,.options-only .welcome-feature-line,.options-only .welcome-choice small,.options-only .welcome-finish-card small,.options-only .manual-firewall-toggle small,.options-only .manual-command-panel>p { color: var(--welcome-muted); }
+.options-only .welcome-feature-line svg,.options-only .welcome-hint svg,.options-only .firewall-result-icon,.options-only .manual-firewall-toggle b { color: #a9c8ff; }
+.options-only .welcome-hero-mark { background: #303238; border: 1px solid #41444c; box-shadow: 0 9px 26px rgba(0,0,0,.24); }
 .options-only .welcome-choice-list,.options-only .firewall-result,.options-only .welcome-finish-card { background: var(--welcome-panel-raised); border-color: var(--welcome-line); }
 .options-only .welcome-choice { border-color: transparent; }
-.options-only .welcome-choice:has(.desktop-switch.on) { background: rgba(79,143,255,.11); border-color: rgba(126,171,250,.25); }
-.options-only .welcome-choice strong em { color: #bed4ff; background: rgba(75,134,245,.16); }
-.options-only .welcome-hint { color: #d2deef; background: rgba(79,143,255,.09); border: 1px solid rgba(126,171,250,.19); }
-.options-only .welcome-hint svg,.options-only .firewall-result-icon,.options-only .manual-firewall-toggle b { color: #b2ceff; }
-.options-only .welcome-hint.needs-attention { color: #f1d9a9; background: rgba(190,143,63,.11); border-color: rgba(218,177,109,.22); }
+.options-only .welcome-choice:has(.desktop-switch.on) { background: rgba(78,137,245,.09); border-color: rgba(126,171,250,.2); }
+.options-only .welcome-choice strong em { color: #bed4ff; background: rgba(78,137,245,.15); }
+.options-only .welcome-hint { color: #d2deef; background: rgba(78,137,245,.08); border: 1px solid rgba(126,171,250,.16); }
+.options-only .welcome-hint.needs-attention { color: #f1d9a9; background: rgba(190,143,63,.1); border-color: rgba(218,177,109,.2); }
 .options-only .welcome-hint.needs-attention svg,.options-only .firewall-result.denied,.options-only .firewall-result.denied .firewall-result-icon { color: #e7c37f; }
-.options-only .firewall-result-icon { color: #b9d3ff; background: #2b3c56; border-radius: 8px; }
+.options-only .firewall-result-icon { background: #2a3545; border-radius: 8px; }
 .options-only .welcome-firewall-button,.options-only .welcome-next { background: var(--welcome-blue); }
-.options-only .welcome-firewall-button:hover:not(:disabled),.options-only .welcome-next:hover:not(:disabled) { background: var(--welcome-blue-hover); box-shadow: 0 5px 15px rgba(50,104,207,.23); }
+.options-only .welcome-firewall-button:hover:not(:disabled),.options-only .welcome-next:hover:not(:disabled) { background: var(--welcome-blue-hover); box-shadow: 0 5px 15px rgba(50,104,207,.22); }
+.options-only .welcome-firewall-button:focus-visible,.options-only .welcome-next:focus-visible,.options-only .welcome-back:focus-visible,.options-only .welcome-later:focus-visible,.options-only .manual-firewall-toggle:focus-visible { outline: 2px solid #a9c8ff; outline-offset: 3px; }
 .options-only .manual-firewall { border-color: var(--welcome-line); }
-.options-only .manual-firewall-toggle strong,.options-only .manual-command-panel>p strong { color: var(--welcome-text); }
-.options-only .manual-command-panel textarea { color: #dce8fb; background: #151b25; border-color: #3d4a5e; }
-.options-only .welcome-ready-mark { color: #f2f7ff; background: #3d73cc; box-shadow: 0 0 0 7px rgba(75,134,245,.14); }
+.options-only .manual-command-panel textarea { color: #dce8fb; background: #17191e; border-color: #414650; }
+.options-only .welcome-ready-mark { color: #f2f7ff; background: #386fca; box-shadow: 0 0 0 7px rgba(78,137,245,.12); }
 .options-only .welcome-finish-card small.welcome-tail-link { color: #bed4ff; }
 .options-only .welcome-error { color: #ffd0ca; border-color: rgba(255,150,137,.25); }
 .options-only .welcome-back { color: var(--welcome-muted) !important; }
-.options-only .welcome-back:hover:not(:disabled) { color: var(--welcome-text) !important; background: #2c3543; }
-.options-only .welcome-next { box-shadow: 0 3px 11px rgba(42,104,211,.2); }
-.options-only .welcome-dialog :focus-visible { outline-color: #b2ceff; }
-.options-only .welcome-content { scrollbar-color: #586273 transparent; }
-.options-only .welcome-overlay { background: rgba(8,13,21,.78); backdrop-filter: blur(7px); }
-.options-only .welcome-dialog { animation-duration: .28s; }
+.options-only .welcome-back:hover:not(:disabled) { color: var(--welcome-text) !important; background: #30333a; }
+.options-only .welcome-next { box-shadow: 0 3px 11px rgba(42,104,211,.18); }
+.options-only .welcome-dialog :focus-visible { outline-color: #a9c8ff; }
+.options-only .welcome-content { scrollbar-color: #626975 transparent; }
+.options-only .welcome-overlay { background: rgba(8,10,14,.76); backdrop-filter: blur(8px); }
+.options-only .welcome-dialog { animation: welcome-arrive .34s cubic-bezier(.16,1,.3,1) both; }
+@keyframes welcome-arrive { from { opacity: 0; transform: translateY(12px) scale(.985); filter: blur(4px); } to { opacity: 1; transform: none; filter: blur(0); } }
+.options-only .welcome-content>* { animation: setup-step-arrive .26s cubic-bezier(.16,1,.3,1) both; }
+@keyframes setup-step-arrive { from { opacity: 0; transform: translateY(8px); filter: blur(2px); } to { opacity: 1; transform: none; filter: blur(0); } }
 .options-only .welcome-progress-step i { transition: color .18s ease,background .22s ease,border-color .22s ease,box-shadow .22s ease,transform .22s cubic-bezier(.2,.8,.2,1); }
 .options-only .welcome-choice { transition: background .2s ease,border-color .2s ease,transform .2s cubic-bezier(.2,.8,.2,1); }
 .options-only .welcome-firewall-button,.options-only .welcome-next { transition: background .18s ease,box-shadow .2s ease,transform .2s cubic-bezier(.2,.8,.2,1); }
 .options-only .open-soundboard:disabled { opacity: .56; cursor: wait; }
+@media (prefers-reduced-motion: reduce) {
+  .options-only .welcome-dialog,.options-only .welcome-content>* { animation: none !important; }
+  .options-only .welcome-progress-step i,.options-only .welcome-choice,.options-only .welcome-firewall-button,.options-only .welcome-next { transition-duration: .01ms !important; }
+}

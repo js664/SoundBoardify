@@ -9,8 +9,20 @@ public sealed class SoundLibrary(Storage storage)
 {
     private readonly object _gate = new();
     private readonly List<Sound> _sounds = storage.LoadSounds();
+    private IReadOnlyList<SoundHotkeyAssignment>? _hotkeyAssignments;
     public event Action<string, object?>? Changed;
     public IReadOnlyList<Sound> All { get { lock (_gate) return _sounds.OrderBy(s => s.SortOrder).Select(Clone).ToList(); } }
+    public IReadOnlyList<SoundHotkeyAssignment> HotkeyAssignments
+    {
+        get
+        {
+            lock (_gate)
+                return _hotkeyAssignments ??= Array.AsReadOnly(_sounds
+                    .Where(sound => !string.IsNullOrWhiteSpace(sound.Hotkey))
+                    .Select(sound => new SoundHotkeyAssignment(sound.Id, sound.Name, sound.Hotkey!))
+                    .ToArray());
+        }
+    }
     public Sound? Get(Guid id) { lock (_gate) return _sounds.Where(s => s.Id == id).Select(Clone).FirstOrDefault(); }
     private static Sound Clone(Sound s) => s.Copy();
 
@@ -34,7 +46,7 @@ public sealed class SoundLibrary(Storage storage)
             }, ct);
             var name = Regex.Replace(Path.GetFileNameWithoutExtension(filename), @"[\p{C}]", "").Trim();
             var sound = new Sound { Id = id, Name = string.IsNullOrWhiteSpace(name) ? "Sound" : name[..Math.Min(name.Length, 100)], SourceFilename = Path.GetFileName(filename), StoredFilename = id + ".wav", SourceDurationSeconds = duration };
-            lock (_gate) { sound.SortOrder = _sounds.Count; storage.Save(sound); _sounds.Add(sound); }
+            lock (_gate) { sound.SortOrder = _sounds.Count; storage.Save(sound); _sounds.Add(sound); _hotkeyAssignments = null; }
             Changed?.Invoke("sound-added", sound);
             return Clone(sound);
         }
@@ -65,7 +77,7 @@ public sealed class SoundLibrary(Storage storage)
                 s.EndSeconds = Math.Clamp(s.EndSeconds.Value, minimumEnd, s.SourceDurationSeconds);
             }
             if (s.Mode is not ("toggle" or "retrigger")) throw new ArgumentException("Invalid playback mode.");
-            storage.Save(s); _sounds[index] = s; result = Clone(s);
+            storage.Save(s); _sounds[index] = s; _hotkeyAssignments = null; result = Clone(s);
         }
         Changed?.Invoke("sound-changed", result);
         return result;
@@ -88,6 +100,7 @@ public sealed class SoundLibrary(Storage storage)
             for (var i = 0; i < remaining.Count; i++) remaining[i].SortOrder = i;
             storage.DeleteSoundsAndSaveOrder(ids, remaining);
             _sounds.Clear(); _sounds.AddRange(remaining);
+            _hotkeyAssignments = null;
         }
         foreach (var sound in removed)
         {
@@ -122,6 +135,7 @@ public sealed class SoundLibrary(Storage storage)
             storage.SaveSoundsOrder(reordered);
             _sounds.Clear();
             _sounds.AddRange(reordered);
+            _hotkeyAssignments = null;
         }
         Changed?.Invoke("order-changed", ids);
     }

@@ -104,6 +104,8 @@ function DevicePicker({ id, label, detail, value, currentName, devices, onChange
 export default function DesktopApp() {
   const [settings, setSettings] = useState(null);
   const [devices, setDevices] = useState([]);
+  const [deviceLoadError, setDeviceLoadError] = useState(false);
+  const [loadError, setLoadError] = useState('');
   const [status, setStatus] = useState(null);
   const [portDraft, setPortDraft] = useState('6769');
   const [editingPort, setEditingPort] = useState(false);
@@ -124,6 +126,7 @@ export default function DesktopApp() {
   const [activeSection, setActiveSection] = useState('overview');
   const [connectionChoice, setConnectionChoice] = useState('wifi');
   const [setupOpen, setSetupOpen] = useState(false);
+  const [openingSoundboard, setOpeningSoundboard] = useState(false);
   const [setupStep, setSetupStep] = useState(0);
   const [setupFirewallState, setSetupFirewallState] = useState('idle');
   const [setupError, setSetupError] = useState('');
@@ -135,12 +138,37 @@ export default function DesktopApp() {
   const welcomeDialogRef = useRef(null);
 
   async function refresh() {
-    const [nextSettings, endpoints, state] = await Promise.all([request('/api/settings'), request('/api/audio/devices'), request('/api/status')]);
-    setSettings(nextSettings); setPortDraft(String(nextSettings.port)); setDevices(endpoints || []); setStatus(state);
+    const [settingsResult, devicesResult, statusResult] = await Promise.allSettled([
+      request('/api/settings'), request('/api/audio/devices'), request('/api/status'),
+    ]);
+    if (settingsResult.status === 'rejected') {
+      const message = settingsResult.reason?.message || 'The settings service did not respond.';
+      setLoadError(`Couldn’t load SimplySound settings. ${message}`);
+      if (!settings) return;
+      throw settingsResult.reason;
+    }
+
+    const nextSettings = settingsResult.value;
+    setSettings(nextSettings);
+    setPortDraft(String(nextSettings.port));
+    setLoadError('');
+    if (devicesResult.status === 'fulfilled') {
+      setDevices(devicesResult.value || []);
+      setDeviceLoadError(false);
+    } else {
+      setDeviceLoadError(true);
+    }
+    if (statusResult.status === 'fulfilled') setStatus(statusResult.value);
   }
   const refreshDevices = useCallback(async () => {
-    const endpoints = await request('/api/audio/devices');
-    setDevices(endpoints || []);
+    try {
+      const endpoints = await request('/api/audio/devices');
+      setDevices(endpoints || []);
+      setDeviceLoadError(false);
+    } catch (error) {
+      setDeviceLoadError(true);
+      throw error;
+    }
   }, []);
   const checkForUpdates = useCallback(async () => {
     const bridge = window.SimplySoundDesktop;
@@ -194,11 +222,12 @@ export default function DesktopApp() {
     return () => document.removeEventListener('keydown', trapFocus, true);
   }, [setupOpen, setupStep]);
   useEffect(() => {
+    if (activeSection !== 'audio') return;
     const refreshHotkeys = () => window.SimplySoundDesktop?.getHotkeyStatus?.().then(setHotkeyStatus).catch(() => {});
     refreshHotkeys();
     const timer = setInterval(refreshHotkeys, 2500);
     return () => clearInterval(timer);
-  }, []);
+  }, [activeSection]);
   useEffect(() => () => { clearTimeout(masterTimer.current); clearTimeout(micGainTimer.current); }, []);
   useEffect(() => { if (!toast) return; const timer = setTimeout(() => setToast(''), 3500); return () => clearTimeout(timer); }, [toast]);
 
@@ -304,6 +333,21 @@ export default function DesktopApp() {
     try { await window.SimplySoundDesktop?.completeSetup?.(); setSetupOpen(false); setSetupError(''); }
     catch (error) { setSetupError(error.message || 'Could not save setup progress.'); }
   }
+  async function openSoundboard() {
+    const bridge = window.SimplySoundDesktop;
+    if (!bridge?.openSoundboard) {
+      setToast('Open the soundboard from the SimplySound desktop app.');
+      return;
+    }
+    setOpeningSoundboard(true);
+    try {
+      await bridge.openSoundboard();
+    } catch (error) {
+      setToast(error.message || 'Could not open the soundboard in your browser.');
+    } finally {
+      setOpeningSoundboard(false);
+    }
+  }
   function openSetup() {
     setSetupStep(0); setSetupOpen(true); setSetupError(''); setShowManualCommand(false); setManualCommand('');
   }
@@ -364,9 +408,11 @@ export default function DesktopApp() {
           </div>
           {sectionCopy[1] && <p>{sectionCopy[1]}</p>}
         </div>
-        {activeSection === 'overview' && <a className="open-soundboard" aria-label="Open soundboard in your browser" href={`${window.location.origin}/`} target="_blank" rel="noopener noreferrer"><span>Open soundboard</span><Icon name="arrow" size={14}/></a>}
+        {activeSection === 'overview' && <button type="button" className="open-soundboard" aria-label="Open soundboard in your browser" onClick={openSoundboard} disabled={openingSoundboard}><span>{openingSoundboard ? 'Opening soundboard…' : 'Open soundboard'}</span><Icon name="arrow" size={14}/></button>}
       </div>
-      {!settings ? <div className="desktop-loading">Connecting to SimplySound…</div> : <>
+      {!settings ? <div className={`desktop-loading ${loadError ? 'has-error' : ''}`} role="status" aria-live="polite">
+        {loadError ? <><span>{loadError}</span><button type="button" onClick={() => refresh().catch(() => {})}>Try again</button></> : 'Connecting to SimplySound…'}
+      </div> : <>
         {activeSection === 'overview' && <>
         <section className="connect-panel">
           <div className="qr-frame">{wifiUrl && !wifiUrl.includes('127.0.0.1') ? <img src={`/api/phone/qr?v=${qrVersion}`} alt="Scan with your phone for Wi-Fi/LAN access"/> : <div className="qr-unavailable"><Icon name="phone" size={28}/><span>{settings.lanAccess ? 'Waiting for Wi-Fi' : 'Wi-Fi access is off'}</span></div>}<span>Scan on your Wi-Fi</span></div>
@@ -390,6 +436,7 @@ export default function DesktopApp() {
         {activeSection === 'audio' && <div className="settings-columns single-column">
           <section className="settings-section audio-section">
             <div className="section-heading"><h2>Output & monitoring</h2></div>
+            {deviceLoadError && <p className="audio-device-warning" role="status">Windows audio devices could not be loaded. Open a device selector to try again.</p>}
             <DevicePicker id="playback" label="Soundboard output" detail="Defaults to the Windows playback device." value={settings.endpointId || null} currentName={status?.endpoint} devices={devices} onChange={selectDevice} onRefreshDevices={refreshDevices}/>
             <div className="setting-divider"/>
             <div className="setting-inline"><div><strong>Hear sounds on this PC</strong><small>Play a local copy while sending audio to your output.</small></div><Switch label="Hear sounds on this PC" checked={settings.monitorLocally} onChange={monitorLocally => patchSettings({ monitorLocally }).catch(() => {})}/></div>

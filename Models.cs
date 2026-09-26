@@ -118,4 +118,5 @@ public sealed record AppSettingsView(
 }
 
 public record DeviceInfo(string Id, string Name, string State, string Format, int SampleRate, int Channels, bool Selected);
+public sealed record SoundHotkeyAssignment(Guid Id, string Name, string Hotkey);
 public record PlaybackState(Guid? SoundId, double PositionSeconds, bool Playing);
