@@ -25,6 +25,10 @@ public sealed class Sound
     public string? ImageFilename { get; set; }
     [JsonIgnore] public double PlayDuration => Math.Max(0, (EndSeconds ?? SourceDurationSeconds) - StartSeconds);
     [JsonIgnore] public string PlaybackStatus { get; set; } = "";
+
+    // Every member is a value type or immutable string, so a shallow snapshot is
+    // independent and avoids serializing/deserializing a sound on the play path.
+    internal Sound Copy() => (Sound)MemberwiseClone();
 }
 
 public static class SoundHotkey
@@ -65,6 +69,10 @@ public sealed class AppSettings
     public string Theme { get; set; } = "system";
     public string? PairingToken { get; set; }
     public long MaxUploadBytes { get; set; } = 30 * 1024 * 1024;
+
+    // Settings contain only values and immutable strings; keep snapshots cheap on
+    // playback and update paths without a JSON round trip.
+    internal AppSettings Copy() => (AppSettings)MemberwiseClone();
 }
 
 // Settings returned to the web UI deliberately never include the pairing secret.

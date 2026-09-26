@@ -155,7 +155,7 @@ public sealed class AppCoordinator(Storage storage, SoundLibrary library, AudioE
     internal static bool ShouldPreserveLegacyVirtualMicHeadroom(string? endpointName)
         => endpointName?.Contains("Steam Streaming Microphone", StringComparison.OrdinalIgnoreCase) == true;
     public AppSettingsView SettingsView() => AppSettingsView.From(Settings);
-    private static AppSettings Clone(AppSettings s) => System.Text.Json.JsonSerializer.Deserialize<AppSettings>(System.Text.Json.JsonSerializer.Serialize(s))!;
+    private static AppSettings Clone(AppSettings s) => s.Copy();
     public AppSettings UpdateSettings(Action<AppSettings> change)
     {
         AppSettings result;

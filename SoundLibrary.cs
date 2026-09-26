@@ -12,7 +12,7 @@ public sealed class SoundLibrary(Storage storage)
     public event Action<string, object?>? Changed;
     public IReadOnlyList<Sound> All { get { lock (_gate) return _sounds.OrderBy(s => s.SortOrder).Select(Clone).ToList(); } }
     public Sound? Get(Guid id) { lock (_gate) return _sounds.Where(s => s.Id == id).Select(Clone).FirstOrDefault(); }
-    private static Sound Clone(Sound s) => System.Text.Json.JsonSerializer.Deserialize<Sound>(System.Text.Json.JsonSerializer.Serialize(s))!;
+    private static Sound Clone(Sound s) => s.Copy();
 
     public async Task<Sound> ImportAsync(Stream stream, string filename, CancellationToken ct = default)
     {
