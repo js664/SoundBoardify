@@ -110,6 +110,7 @@ export default function DesktopApp() {
   const [pairDraft, setPairDraft] = useState('');
   const [qrVersion, setQrVersion] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [openingSoundboard, setOpeningSoundboard] = useState(false);
   const [toast, setToast] = useState('');
   const [appVersion, setAppVersion] = useState(null);
   const [updateState, setUpdateState] = useState('checking');
@@ -313,6 +314,16 @@ export default function DesktopApp() {
     catch { setToast('Could not open the GitHub release page.'); }
   }
 
+  async function openSoundboard() {
+    const bridge = window.SimplySoundDesktop;
+    if (!serverReady) { setToast('The soundboard is still starting. Try again in a moment.'); return; }
+    if (typeof bridge?.openSoundboard !== 'function') { setToast('Open the soundboard from the installed SimplySound desktop app.'); return; }
+    setOpeningSoundboard(true);
+    try { await bridge.openSoundboard(); }
+    catch (error) { setToast(error.message || 'Could not open the soundboard in your browser.'); }
+    finally { setOpeningSoundboard(false); }
+  }
+
   const appClass = 'desktop-app options-only';
   const wifiUrl = status?.wifiUrl || status?.url;
   const tailscaleUrl = status?.tailscaleUrl;
@@ -365,7 +376,7 @@ export default function DesktopApp() {
           </div>
           {sectionCopy[1] && <p>{sectionCopy[1]}</p>}
         </div>
-        {activeSection === 'overview' && <a className="open-soundboard" href={`http://127.0.0.1:${port}/`} target="_blank" rel="noreferrer" aria-label="Open soundboard in your browser" aria-disabled={!serverReady} onClick={event => { if (!serverReady) { event.preventDefault(); setToast('The soundboard is still starting. Try again in a moment.'); } }}><span>Open soundboard</span><Icon name="arrow" size={14}/></a>}
+        {activeSection === 'overview' && <button type="button" className="open-soundboard" aria-label="Open soundboard in your browser" aria-disabled={!serverReady || openingSoundboard} disabled={!serverReady || openingSoundboard} onClick={openSoundboard}><span>{openingSoundboard ? 'Opening…' : 'Open soundboard'}</span><Icon name="arrow" size={14}/></button>}
       </div>
       {!settings ? <div className="desktop-loading">Connecting to SimplySound…</div> : <>
         {activeSection === 'overview' && <>

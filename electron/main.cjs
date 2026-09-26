@@ -189,6 +189,7 @@ async function createWindow(port) {
 }
 
 ipcMain.handle('SimplySound:open-soundboard', async event => {
+  if (!mainWindow || event.sender !== mainWindow.webContents) throw new Error('The soundboard can only be opened from the SimplySound desktop window.');
   return openSoundboardInBrowser({ sender: event.sender, mainWindowWebContents: mainWindow?.webContents, port: activePort, openExternal: url => shell.openExternal(url) });
 });
 

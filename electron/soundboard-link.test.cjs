@@ -37,6 +37,27 @@ test('opens the active local soundboard for the trusted desktop window', async (
   assert.deepEqual(result, { url: openedUrl });
 });
 
+test('opens the configured fallback port rather than assuming the primary port', async () => {
+  const mainWindowWebContents = {};
+  const result = await openSoundboardInBrowser({
+    sender: mainWindowWebContents,
+    mainWindowWebContents,
+    port: 6669,
+    openExternal: async url => { assert.equal(url, 'http://127.0.0.1:6669/'); },
+  });
+  assert.equal(result.url, 'http://127.0.0.1:6669/');
+});
+
+test('reports that the service is not ready when no active port is available', async () => {
+  const mainWindowWebContents = {};
+  await assert.rejects(openSoundboardInBrowser({
+    sender: mainWindowWebContents,
+    mainWindowWebContents,
+    port: undefined,
+    openExternal: async () => {},
+  }), /Web UI port is not ready/);
+});
+
 test('rejects soundboard launch requests from other renderer windows', async () => {
   await assert.rejects(openSoundboardInBrowser({
     sender: {},
