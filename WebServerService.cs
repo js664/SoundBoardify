@@ -40,8 +40,11 @@ public sealed class WebSocketHub
     }
     public async Task Broadcast(string type, object? data)
     {
+        if (_clients.IsEmpty) return;
+        var clients = _clients.ToArray();
+        if (clients.Length == 0) return;
         var bytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { type, data }, JsonOptions));
-        var sends = _clients.ToArray().Select(entry => SendToClient(entry.Value, type, bytes));
+        var sends = clients.Select(entry => SendToClient(entry.Value, type, bytes));
         await Task.WhenAll(sends);
     }
     private static async Task SendToClient(ClientConnection client, string type, byte[] bytes)
