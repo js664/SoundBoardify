@@ -105,6 +105,49 @@ internal sealed class ChannelMappingSampleProvider : ISampleProvider, IDisposabl
                 for (var channel = 0; channel < WaveFormat.Channels; channel++)
                     buffer[outputOffset + channel] = channel < 2 ? _input[inputOffset] : 0;
             }
+            else if (WaveFormat.Channels == 2 && sourceChannels > 2)
+            {
+                // Decode the common interleaved Windows layouts (3.0, quad, 5.0,
+                // 5.1, 6.1, 7.1) instead of silently discarding every channel
+                // after front-left/front-right. Keep LFE out of stereo so a
+                // subwoofer-only track cannot make mic/desktop playback boomy.
+                var center = sourceChannels is 3 or 5 or 6 or 7 or 8 ? _input[inputOffset + 2] * .70710678f : 0f;
+                var left = _input[inputOffset];
+                var right = _input[inputOffset + 1];
+                if (sourceChannels == 4)
+                {
+                    left += _input[inputOffset + 2] * .70710678f;
+                    right += _input[inputOffset + 3] * .70710678f;
+                }
+                else if (sourceChannels == 5)
+                {
+                    left += _input[inputOffset + 3] * .70710678f;
+                    right += _input[inputOffset + 4] * .70710678f;
+                }
+                else if (sourceChannels == 6)
+                {
+                    left += _input[inputOffset + 4] * .70710678f;
+                    right += _input[inputOffset + 5] * .70710678f;
+                }
+                else if (sourceChannels == 7)
+                {
+                    var backCenter = _input[inputOffset + 4] * .5f;
+                    left += backCenter + _input[inputOffset + 5] * .70710678f;
+                    right += backCenter + _input[inputOffset + 6] * .70710678f;
+                }
+                else if (sourceChannels == 8)
+                {
+                    left += _input[inputOffset + 4] * .70710678f + _input[inputOffset + 6] * .70710678f;
+                    right += _input[inputOffset + 5] * .70710678f + _input[inputOffset + 7] * .70710678f;
+                }
+                if (sourceChannels is 3 or 5 or 6 or 7 or 8)
+                {
+                    left += center;
+                    right += center;
+                }
+                buffer[outputOffset] = left;
+                buffer[outputOffset + 1] = right;
+            }
             else
             {
                 for (var channel = 0; channel < WaveFormat.Channels; channel++)

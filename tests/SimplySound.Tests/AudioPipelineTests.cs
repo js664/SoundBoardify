@@ -137,6 +137,30 @@ public sealed class AudioPipelineTests
     }
 
     [Fact]
+    public void SixChannelDownmixKeepsCenterAndSurroundButOmitsLfe()
+    {
+        var surround51 = new ChannelMappingSampleProvider(
+            new FloatSource(WaveFormat.CreateIeeeFloatWaveFormat(48000, 6), [.1f, .2f, .3f, .95f, .4f, .5f]), 2);
+        var stereo = new float[2];
+
+        Assert.Equal(2, surround51.Read(stereo, 0, stereo.Length));
+        Assert.Equal(.1f + (.3f + .4f) * .70710678f, stereo[0], 5);
+        Assert.Equal(.2f + (.3f + .5f) * .70710678f, stereo[1], 5);
+    }
+
+    [Fact]
+    public void EightChannelDownmixIncludesBackAndSidePairs()
+    {
+        var surround71 = new ChannelMappingSampleProvider(
+            new FloatSource(WaveFormat.CreateIeeeFloatWaveFormat(48000, 8), [.1f, .2f, .3f, .95f, .4f, .5f, .6f, .7f]), 2);
+        var stereo = new float[2];
+
+        Assert.Equal(2, surround71.Read(stereo, 0, stereo.Length));
+        Assert.Equal(.1f + (.3f + .4f + .6f) * .70710678f, stereo[0], 5);
+        Assert.Equal(.2f + (.3f + .5f + .7f) * .70710678f, stereo[1], 5);
+    }
+
+    [Fact]
     public void TrimProviderStopsAtWholeFrames()
     {
         var limited = new LimitedSampleProvider(new FloatSource(WaveFormat.CreateIeeeFloatWaveFormat(10, 2), [1, 2, 3, 4, 5, 6]), .2);

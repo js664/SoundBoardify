@@ -25,24 +25,52 @@ function Icon({ name, size = 18 }) {
 function Switch({ checked, onChange, label, disabled = false }) { return <button type="button" role="switch" aria-checked={checked} aria-label={label} aria-disabled={disabled} disabled={disabled} className={`desktop-switch ${checked ? 'on' : ''}`} onClick={() => onChange(!checked)}><i/></button>; }
 function DevicePicker({ id, label, detail, value, currentName, devices, onChange }) {
   const [open, setOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const triggerRef = useRef(null);
+  const listRef = useRef(null);
   const selected = devices.find(device => device.id === value);
   const ordered = useMemo(() => [...devices].sort((a, b) => Number(b.state === 'Active') - Number(a.state === 'Active') || a.name.localeCompare(b.name)), [devices]);
+  const options = useMemo(() => [null, ...ordered], [ordered]);
+  const selectedIndex = Math.max(0, options.findIndex(device => device?.id === value));
   useEffect(() => {
     if (!open) return;
     const close = event => { if (!event.target.closest(`[data-picker="${id}"]`)) setOpen(false); };
-    const escape = event => { if (event.key === 'Escape') setOpen(false); };
-    document.addEventListener('pointerdown', close); document.addEventListener('keydown', escape);
-    return () => { document.removeEventListener('pointerdown', close); document.removeEventListener('keydown', escape); };
+    document.addEventListener('pointerdown', close);
+    return () => document.removeEventListener('pointerdown', close);
   }, [id, open]);
-  const choose = next => { onChange(next); setOpen(false); };
+  useEffect(() => {
+    if (!open) return;
+    setActiveIndex(selectedIndex);
+    requestAnimationFrame(() => listRef.current?.focus());
+  }, [open, selectedIndex]);
+  const choose = next => { onChange(next); setOpen(false); requestAnimationFrame(() => triggerRef.current?.focus()); };
+  const onListKeyDown = event => {
+    if (event.key === 'Escape') {
+      event.preventDefault(); setOpen(false); requestAnimationFrame(() => triggerRef.current?.focus());
+      return;
+    }
+    let next = activeIndex;
+    if (event.key === 'ArrowDown') next = (activeIndex + 1) % options.length;
+    else if (event.key === 'ArrowUp') next = (activeIndex - 1 + options.length) % options.length;
+    else if (event.key === 'Home') next = 0;
+    else if (event.key === 'End') next = options.length - 1;
+    else if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault(); choose(options[activeIndex]?.id ?? null); return;
+    } else return;
+    event.preventDefault(); setActiveIndex(next);
+  };
   return <div className={`desktop-device ${open ? 'is-open' : ''}`} data-picker={id}>
     <div className="desktop-device-copy"><strong>{label}</strong><small>{detail}</small></div>
-    <button type="button" className="device-picker-trigger" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(value => !value)}>
+    <button ref={triggerRef} type="button" className="device-picker-trigger" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(value => !value)}>
       <span className={`device-led ${selected?.state === 'Active' || !value ? 'ready' : ''}`}/><span className="device-picker-value"><strong>{selected?.name || (value ? 'Selected device unavailable' : currentName || 'Windows default')}</strong><small>{selected ? `${selected.sampleRate ? `${Math.round(selected.sampleRate / 1000)} kHz · ` : ''}${selected.state}` : 'Follow Windows default'}</small></span><span className="device-chevron"><Icon name="chevron" size={16}/></span>
     </button>
-    {open && <div className="device-picker-menu" role="listbox">
-      <button type="button" role="option" aria-selected={!value} onClick={() => choose(null)}><span><strong>Windows default</strong><small>{currentName || 'Follow your system playback device'}</small></span>{!value && <Icon name="check" size={15}/>}</button>
-      {ordered.map(device => <button type="button" role="option" aria-selected={value === device.id} key={device.id} onClick={() => choose(device.id)}><span><strong>{device.name}</strong><small>{device.sampleRate ? `${Math.round(device.sampleRate / 1000)} kHz · ` : ''}{device.state}</small></span>{value === device.id && <Icon name="check" size={15}/>}</button>)}
+    {open && <div ref={listRef} className="device-picker-menu" role="listbox" tabIndex={0} aria-label={`${label} devices`} aria-activedescendant={`${id}-option-${activeIndex}`} onKeyDown={onListKeyDown}>
+      {options.map((device, index) => {
+        const isSelected = device ? value === device.id : !value;
+        return <div id={`${id}-option-${index}`} role="option" aria-selected={isSelected} data-active={activeIndex === index} key={device?.id ?? 'default'} onMouseMove={() => setActiveIndex(index)} onClick={() => choose(device?.id ?? null)}>
+          <span><strong>{device?.name ?? 'Windows default'}</strong><small>{device ? `${device.sampleRate ? `${Math.round(device.sampleRate / 1000)} kHz · ` : ''}${device.state}` : currentName || 'Follow your system playback device'}</small></span>{isSelected && <Icon name="check" size={15}/>}
+        </div>;
+      })}
     </div>}
   </div>;
 }
