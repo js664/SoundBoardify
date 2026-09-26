@@ -24,6 +24,7 @@
     },
     "files": [
       "main.cjs",
+      "backend-process.cjs",
       "preload.cjs",
       "marketplace-bridge.cjs",
       "firewall-command.cjs",

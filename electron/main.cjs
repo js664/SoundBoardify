@@ -8,6 +8,7 @@ const { isNewerVersion, isSimplySoundReleaseAssetUrl, isSimplySoundReleaseUrl, s
 const { createMarketplaceBridge } = require('./marketplace-bridge.cjs');
 const { buildFirewallCommand } = require('./firewall-command.cjs');
 const { isSoundboardWindowOpenRequest, openSoundboardInBrowser } = require('./soundboard-link.cjs');
+const { monitorBackendProcess } = require('./backend-process.cjs');
 
 app.setName('SimplySound');
 app.setAppUserModelId('com.simplysound.desktop');
@@ -30,6 +31,7 @@ let activePort;
 let appOrigin;
 let portPoll;
 let stableBackendPath;
+let getBackendFailure = () => null;
 let hotkeyPoll;
 let hotkeyRefreshActive = false;
 let hotkeySignature = '';
@@ -88,7 +90,8 @@ async function waitForServer(timeoutMs = 30000) {
   const deadline = Date.now() + timeoutMs;
   let port;
   while (Date.now() < deadline) {
-    if (backend?.exitCode !== null && backend?.exitCode !== undefined) throw new Error(`Audio service exited with code ${backend.exitCode}.`);
+    const backendFailure = getBackendFailure();
+    if (backendFailure) throw backendFailure;
     try { port = Number((await fs.promises.readFile(portFile, 'utf8')).trim()); } catch {}
     if (port >= 1024 && port <= 65535) {
       try {
@@ -109,6 +112,7 @@ async function startBackend() {
   await fs.promises.rm(portFile, { force: true });
   marketplaceBridge = await createMarketplaceBridge();
   backend = spawn(executable, ['--electron-backend', `--electron-port-file=${portFile}`, `--electron-marketplace-bridge-port=${marketplaceBridge.port}`, `--electron-marketplace-bridge-token=${marketplaceBridge.token}`], { windowsHide: true, stdio: 'ignore' });
+  getBackendFailure = monitorBackendProcess(backend);
   return waitForServer();
 }
 async function refreshGlobalHotkeys() {
