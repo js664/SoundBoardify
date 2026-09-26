@@ -368,7 +368,7 @@ export default function DesktopApp() {
       </nav>
       <div className="sidebar-spacer"/>
       <button className="sidebar-setup" onClick={openSetup}><Icon name="phone" size={16}/><span>Setup guide</span><Icon name="chevron" size={13}/></button>
-      <div className="sidebar-health"><i className={serverReady ? 'connected' : ''}/><span><strong>{serverReady ? 'Soundboard online' : 'Starting soundboard'}</strong><small>{outputReady ? 'Ready to play' : 'Waiting for audio'}</small></span></div>
+      <div className="sidebar-health"><i className={readinessState === 'ready' ? 'connected' : readinessState}/><span><strong>{serverReady ? 'Soundboard online' : 'Starting soundboard'}</strong><small>{outputReady ? 'Ready to play' : serverReady ? 'Audio needs attention' : 'Waiting for audio'}</small></span></div>
       <div className="sidebar-version"><span>Early Beta</span><strong>{appVersion ? `v${appVersion}` : ''}</strong></div>
     </aside>
     <div className="studio-main">

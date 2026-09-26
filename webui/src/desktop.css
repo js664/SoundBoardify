@@ -498,6 +498,8 @@
 .options-only .studio-nav-item.active .nav-symbol { color: #acd0ff; background: #344b69; }
 .options-only .sidebar-health { border-top-color: #303238; }
 .options-only .sidebar-health>i.connected { box-shadow: 0 0 0 3px rgba(105,211,155,.1),0 0 11px rgba(105,211,155,.27); }
+.options-only .sidebar-health>i.starting { background: #86b6ff; animation: readiness-pulse 1.5s ease-in-out infinite; }
+.options-only .sidebar-health>i.attention { background: var(--desk-yellow); }
 .options-only .open-soundboard { min-height: 36px; padding-inline: 14px; border: 1px solid #4a86f5; border-radius: 8px; font-size: 12px; font-weight: 600; box-shadow: none; transition: background .17s ease,border-color .17s ease,transform .17s ease; }
 .options-only .open-soundboard:hover { background: #4384fa; border-color: #6da0ff; transform: none; }
 .options-only .open-soundboard:active { transform: scale(.98); }
