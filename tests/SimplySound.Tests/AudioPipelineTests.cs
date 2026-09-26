@@ -287,6 +287,83 @@ public sealed class AudioPipelineTests
         finally { File.Delete(path); }
     }
 
+    [Fact]
+    public async Task EndOfStreamDisposalDoesNotBlockRenderReads()
+    {
+        var path = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".wav");
+        var disposalStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var allowDisposal = new ManualResetEventSlim();
+        try
+        {
+            using (var writer = new WaveFileWriter(path, new WaveFormat(8000, 16, 1))) writer.WriteSamples(new short[8], 0, 8);
+            var format = WaveFormat.CreateIeeeFloatWaveFormat(8000, 1);
+            var switching = new SwitchingWaveProvider(format);
+            switching.Replace(new AudioFileReader(path), new BlockingDisposeByteSource(format, disposalStarted, allowDisposal));
+
+            var output = new byte[4];
+            var firstRead = Task.Run(() => switching.Read(output, 0, output.Length));
+            Assert.Equal(4, await firstRead.WaitAsync(TimeSpan.FromMilliseconds(500)));
+            await disposalStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+            // A file close may still be blocked on a worker, but the next WASAPI read
+            // must see silence immediately without waiting for that disposal.
+            var secondRead = Task.Run(() => switching.Read(output, 0, output.Length));
+            Assert.Equal(4, await secondRead.WaitAsync(TimeSpan.FromMilliseconds(500)));
+            Assert.Equal(new byte[4], output);
+            allowDisposal.Set();
+            switching.Clear();
+        }
+        finally
+        {
+            allowDisposal.Set();
+            var deadline = DateTime.UtcNow.AddSeconds(2);
+            while (File.Exists(path) && DateTime.UtcNow < deadline)
+            {
+                try { File.Delete(path); }
+                catch (IOException) { await Task.Delay(10); }
+            }
+        }
+    }
+
+    [Fact]
+    public async Task RetriggerDisposalDoesNotBlockRenderReads()
+    {
+        var path = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".wav");
+        var disposalStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var allowDisposal = new ManualResetEventSlim();
+        try
+        {
+            using (var writer = new WaveFileWriter(path, new WaveFormat(8000, 16, 1))) writer.WriteSamples(new short[8], 0, 8);
+            var format = WaveFormat.CreateIeeeFloatWaveFormat(8000, 1);
+            var switching = new SwitchingWaveProvider(format);
+            switching.Replace(new AudioFileReader(path), new BlockingDisposeByteSource(format, disposalStarted, allowDisposal));
+
+            var replacementSource = new ByteSource(format, [9, 8, 7, 6]);
+            var replacing = Task.Run(() => switching.Replace(new AudioFileReader(path), replacementSource));
+            await disposalStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+            // The new stream is already visible before the retired stream finishes
+            // disposing, so a WASAPI callback never waits behind old-file cleanup.
+            var output = new byte[4];
+            var read = Task.Run(() => switching.Read(output, 0, output.Length));
+            Assert.Equal(4, await read.WaitAsync(TimeSpan.FromMilliseconds(500)));
+            Assert.Equal(new byte[] { 9, 8, 7, 6 }, output);
+            allowDisposal.Set();
+            await replacing.WaitAsync(TimeSpan.FromSeconds(2));
+            switching.Clear();
+        }
+        finally
+        {
+            allowDisposal.Set();
+            var deadline = DateTime.UtcNow.AddSeconds(2);
+            while (File.Exists(path) && DateTime.UtcNow < deadline)
+            {
+                try { File.Delete(path); }
+                catch (IOException) { await Task.Delay(10); }
+            }
+        }
+    }
+
     private sealed class FloatSource(WaveFormat waveFormat, float[] samples) : ISampleProvider
     {
         private float[] _samples = samples;
@@ -316,6 +393,17 @@ public sealed class AudioPipelineTests
             return size;
         }
         public void Dispose() => Disposed = true;
+    }
+
+    private sealed class BlockingDisposeByteSource(WaveFormat waveFormat, TaskCompletionSource disposalStarted, ManualResetEventSlim allowDisposal) : IWaveProvider, IDisposable
+    {
+        public WaveFormat WaveFormat { get; } = waveFormat;
+        public int Read(byte[] buffer, int offset, int count) => 0;
+        public void Dispose()
+        {
+            disposalStarted.TrySetResult();
+            allowDisposal.Wait(TimeSpan.FromSeconds(5));
+        }
     }
 }
 

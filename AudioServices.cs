@@ -362,27 +362,36 @@ internal sealed class SwitchingWaveProvider(WaveFormat waveFormat) : IWaveProvid
     public WaveFormat WaveFormat { get; } = waveFormat;
     public void Replace(AudioFileReader reader, IWaveProvider source)
     {
+        AudioFileReader? previousReader;
+        IWaveProvider? previousSource;
         lock (_gate)
         {
-            _reader?.Dispose();
-            if (_current is IDisposable previous) previous.Dispose();
+            previousReader = _reader;
+            previousSource = _current;
             _reader = reader;
             _current = source;
         }
+        DisposeResources(previousReader, previousSource);
     }
     public void Clear()
     {
+        AudioFileReader? reader;
+        IWaveProvider? source;
         lock (_gate)
         {
-            var current = _current;
+            source = _current;
+            reader = _reader;
             _current = null;
-            _reader?.Dispose(); _reader = null;
-            if (current is IDisposable disposable) disposable.Dispose();
+            _reader = null;
         }
+        DisposeResources(reader, source);
     }
     public int Read(byte[] buffer, int offset, int count)
     {
         Array.Clear(buffer, offset, count);
+        AudioFileReader? finishedReader = null;
+        IWaveProvider? finishedSource = null;
+        int result;
         lock (_gate)
         {
             if (_current is null) return count;
@@ -392,11 +401,33 @@ internal sealed class SwitchingWaveProvider(WaveFormat waveFormat) : IWaveProvid
             {
                 Array.Clear(buffer, offset + read, count - read);
                 _current = null;
-                _reader?.Dispose(); _reader = null;
-                if (current is IDisposable disposable) disposable.Dispose();
-                return count;
+                finishedReader = _reader;
+                finishedSource = current;
+                _reader = null;
+                result = count;
             }
-            return read;
+            else result = read;
         }
+        // This method is called on WASAPI's render thread. File close and pooled-buffer
+        // cleanup can take longer than an audio period, so retire finished streams away
+        // from the callback after atomically detaching them from future reads.
+        if ((finishedReader is not null || finishedSource is not null) &&
+            !ThreadPool.QueueUserWorkItem(static state =>
+            {
+                var retired = (RetiredAudio)state!;
+                DisposeResources(retired.Reader, retired.Source);
+            }, new RetiredAudio(finishedReader, finishedSource), preferLocal: false))
+            DisposeResources(finishedReader, finishedSource);
+        return result;
     }
+
+    private static void DisposeResources(AudioFileReader? reader, IWaveProvider? source)
+    {
+        try { if (source is IDisposable disposable) disposable.Dispose(); }
+        catch (Exception ex) { Log.Warning(ex, "Could not dispose a completed audio stream"); }
+        try { reader?.Dispose(); }
+        catch (Exception ex) { Log.Warning(ex, "Could not close a completed audio file"); }
+    }
+
+    private sealed record RetiredAudio(AudioFileReader? Reader, IWaveProvider? Source);
 }
