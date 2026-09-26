@@ -316,10 +316,15 @@ export default function DesktopApp() {
 
   async function openSoundboard() {
     const bridge = window.SimplySoundDesktop;
+    if (openingSoundboard) return;
     if (!serverReady) { setToast('The soundboard is still starting. Try again in a moment.'); return; }
     if (typeof bridge?.openSoundboard !== 'function') { setToast('Open the soundboard from the installed SimplySound desktop app.'); return; }
     setOpeningSoundboard(true);
-    try { await bridge.openSoundboard(); }
+    try {
+      const result = await bridge.openSoundboard();
+      if (!result?.url) throw new Error('Windows did not confirm opening the soundboard. Try again.');
+      setToast(`Soundboard opened at ${new URL(result.url).host}.`);
+    }
     catch (error) { setToast(error.message || 'Could not open the soundboard in your browser.'); }
     finally { setOpeningSoundboard(false); }
   }
@@ -376,7 +381,7 @@ export default function DesktopApp() {
           </div>
           {sectionCopy[1] && <p>{sectionCopy[1]}</p>}
         </div>
-        {activeSection === 'overview' && <button type="button" className="open-soundboard" aria-label="Open soundboard in your browser" aria-disabled={!serverReady || openingSoundboard} disabled={!serverReady || openingSoundboard} onClick={openSoundboard}><span>{openingSoundboard ? 'Opening…' : 'Open soundboard'}</span><Icon name="arrow" size={14}/></button>}
+        {activeSection === 'overview' && <button type="button" className="open-soundboard" aria-label="Open soundboard in your browser" aria-disabled={openingSoundboard} disabled={openingSoundboard} onClick={openSoundboard}><span>{openingSoundboard ? 'Opening…' : 'Open soundboard'}</span><Icon name="arrow" size={14}/></button>}
       </div>
       {!settings ? <div className="desktop-loading">Connecting to SimplySound…</div> : <>
         {activeSection === 'overview' && <>
