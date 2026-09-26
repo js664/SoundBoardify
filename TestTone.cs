@@ -4,7 +4,7 @@ namespace VRSoundboard;
 
 public static class TestTone
 {
-    public static void Play(AudioEngine engine, float volume, Storage? storage = null, bool monitorLocally = true, string? monitorEndpointId = null)
+    public static void Play(AudioEngine engine, float volume, Storage? storage = null, bool monitorLocally = true, string? monitorEndpointId = null, bool useVirtualMicHeadroom = false)
     {
         storage ??= AppServices.Storage ?? throw new InvalidOperationException("Storage is unavailable.");
         const string name = "test-tone.wav";
@@ -19,7 +19,7 @@ public static class TestTone
                 writer.WriteByte((byte)sample); writer.WriteByte((byte)(sample >> 8));
             }
         }
-        engine.Play(new Sound { Id = Guid.NewGuid(), Name = "Test tone", StoredFilename = name, SourceDurationSeconds = .2, Mode = "retrigger" }, volume, monitorLocally, monitorEndpointId: monitorEndpointId);
+        engine.Play(new Sound { Id = Guid.NewGuid(), Name = "Test tone", StoredFilename = name, SourceDurationSeconds = .2, Mode = "retrigger" }, volume, monitorLocally, monitorEndpointId: monitorEndpointId, useVirtualMicHeadroom: useVirtualMicHeadroom);
     }
 }
 

@@ -96,7 +96,7 @@ public partial class MainWindow : Window
     private void OpenUrl_Click(object sender, RoutedEventArgs e) { if (_core.PhoneUrl is { } url) Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); }
     private void RestoreFromTray() => Dispatcher.BeginInvoke(() => { Show(); WindowState = WindowState.Normal; Activate(); });
     private void Stop_Click(object sender, RoutedEventArgs e) => _core.Stop();
-    private void Test_Click(object sender, RoutedEventArgs e) => Act(() => TestTone.Play(_core.Audio, _core.Settings.MasterVolume, _core.Storage, _core.Settings.MonitorLocally));
+    private void Test_Click(object sender, RoutedEventArgs e) => Act(() => { var settings = _core.Settings; TestTone.Play(_core.Audio, settings.MasterVolume, _core.Storage, settings.MonitorLocally, settings.MonitorEndpointId, settings.UseVirtualMicHeadroom); });
     private async void CheckMic_Click(object sender, RoutedEventArgs e)
     {
         var button = sender as System.Windows.Controls.Button;

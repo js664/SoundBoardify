@@ -56,8 +56,13 @@ public sealed class SoundLibrary(Storage storage)
                 throw new ArgumentException("That hotkey is already assigned to another sound.");
             s.Volume = Math.Clamp(s.Volume, 0, 1);
             s.OutputGain = Math.Clamp(s.OutputGain, 0, 1);
-            s.StartSeconds = Math.Clamp(s.StartSeconds, 0, Math.Max(0, s.SourceDurationSeconds - .01));
-            if (s.EndSeconds is not null) s.EndSeconds = Math.Clamp(s.EndSeconds.Value, s.StartSeconds + .01, s.SourceDurationSeconds);
+            var minimumSegment = Math.Min(.01, Math.Max(0, s.SourceDurationSeconds));
+            s.StartSeconds = Math.Clamp(s.StartSeconds, 0, Math.Max(0, s.SourceDurationSeconds - minimumSegment));
+            if (s.EndSeconds is not null)
+            {
+                var minimumEnd = Math.Min(s.SourceDurationSeconds, s.StartSeconds + minimumSegment);
+                s.EndSeconds = Math.Clamp(s.EndSeconds.Value, minimumEnd, s.SourceDurationSeconds);
+            }
             if (s.Mode is not ("toggle" or "retrigger")) throw new ArgumentException("Invalid playback mode.");
             storage.Save(s); _sounds[index] = s; result = Clone(s);
         }

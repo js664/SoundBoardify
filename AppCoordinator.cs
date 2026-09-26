@@ -112,6 +112,12 @@ public sealed class AppCoordinator(Storage storage, SoundLibrary library, AudioE
             _settings.LocalMonitorPreferenceVersion = 1;
             storage.Save(_settings);
         }
+        if (_settings.OutputHeadroomPreferenceVersion == 0)
+        {
+            _settings.UseVirtualMicHeadroom = ShouldPreserveLegacyVirtualMicHeadroom(devices.DeviceName(_settings.EndpointId));
+            _settings.OutputHeadroomPreferenceVersion = 1;
+            storage.Save(_settings);
+        }
         library.Changed += (type, value) => Changed?.Invoke(type, value);
         audio.Changed += (type, value) => Changed?.Invoke(type, value);
         audio.Connect(_settings.EndpointId);
@@ -146,6 +152,8 @@ public sealed class AppCoordinator(Storage storage, SoundLibrary library, AudioE
         if (IsTailscale(address)) return tailscaleAccess;
         return lanAccess && IsPrivate(address);
     }
+    internal static bool ShouldPreserveLegacyVirtualMicHeadroom(string? endpointName)
+        => endpointName?.Contains("Steam Streaming Microphone", StringComparison.OrdinalIgnoreCase) == true;
     public AppSettingsView SettingsView() => AppSettingsView.From(Settings);
     private static AppSettings Clone(AppSettings s) => System.Text.Json.JsonSerializer.Deserialize<AppSettings>(System.Text.Json.JsonSerializer.Serialize(s))!;
     public AppSettings UpdateSettings(Action<AppSettings> change)
@@ -162,7 +170,7 @@ public sealed class AppCoordinator(Storage storage, SoundLibrary library, AudioE
             if (candidate.MaxUploadBytes is < 1024 * 1024 or > 200L * 1024 * 1024) throw new ArgumentException("Upload limit must be between 1 and 200 MB.");
             storage.Save(candidate); _settings = candidate; result = Clone(candidate);
         }
-        audio.SetMixLevels(result.MasterVolume, result.MicOutputGain);
+        audio.SetMixLevels(result.MasterVolume, result.MicOutputGain, result.UseVirtualMicHeadroom);
         Changed?.Invoke("settings-changed", AppSettingsView.From(result));
         return result;
     }
@@ -170,7 +178,7 @@ public sealed class AppCoordinator(Storage storage, SoundLibrary library, AudioE
     {
         var sound = library.Get(id) ?? throw new KeyNotFoundException("Sound not found.");
         var settings = Settings;
-        audio.Play(sound, settings.MasterVolume, settings.MonitorLocally, settings.MicOutputGain, settings.MonitorEndpointId);
+        audio.Play(sound, settings.MasterVolume, settings.MonitorLocally, settings.MicOutputGain, settings.MonitorEndpointId, settings.UseVirtualMicHeadroom);
     }
     public Sound UpdateSound(Guid id, Action<Sound> change)
     {

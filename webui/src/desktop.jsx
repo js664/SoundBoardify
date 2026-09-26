@@ -78,6 +78,7 @@ export default function DesktopApp() {
   const [manualCommand, setManualCommand] = useState('');
   const [manualCopied, setManualCopied] = useState(false);
   const masterTimer = useRef(null);
+  const micGainTimer = useRef(null);
   const welcomeDialogRef = useRef(null);
 
   async function refresh() {
@@ -153,7 +154,7 @@ export default function DesktopApp() {
     const timer = setInterval(refreshHotkeys, 2500);
     return () => clearInterval(timer);
   }, []);
-  useEffect(() => () => clearTimeout(masterTimer.current), []);
+  useEffect(() => () => { clearTimeout(masterTimer.current); clearTimeout(micGainTimer.current); }, []);
   useEffect(() => { if (!toast) return; const timer = setTimeout(() => setToast(''), 3500); return () => clearTimeout(timer); }, [toast]);
 
   async function patchSettings(patch) {
@@ -179,6 +180,11 @@ export default function DesktopApp() {
       try { const saved = await request('/api/settings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ masterVolume: value }) }); setSettings(current => ({ ...current, masterVolume: saved.masterVolume })); }
       catch (error) { setToast(error.message); refresh().catch(() => {}); }
     }, 100);
+  }
+  function changeMicOutputGain(value) {
+    setSettings(current => ({ ...current, micOutputGain: value }));
+    clearTimeout(micGainTimer.current);
+    micGainTimer.current = setTimeout(() => patchSettings({ micOutputGain: value }).catch(() => {}), 100);
   }
   async function applyPort() {
     const port = Number(portDraft);
@@ -267,6 +273,8 @@ export default function DesktopApp() {
   const port = status?.activePort || settings?.port || 6769;
   const serverReady = status?.server === 'running';
   const outputReady = status?.audio?.startsWith('Connected');
+  const readinessState = !serverReady ? 'starting' : outputReady ? 'ready' : 'attention';
+  const readinessLabel = !serverReady ? 'Starting' : outputReady ? 'Ready to play' : 'Audio needs attention';
   const selectedConnection = connectionChoice === 'tailscale' && tailscaleUrl ? 'tailscale' : 'wifi';
   const selectedPhoneUrl = selectedConnection === 'tailscale' ? tailscaleUrl : wifiUrl;
   const updateMessage = {
@@ -278,13 +286,13 @@ export default function DesktopApp() {
     unavailable: 'Desktop version unavailable',
   }[updateState] || 'Check for updates';
   const navigation = [
-    { id: 'overview', label: 'General', icon: 'settings' },
+    { id: 'overview', label: 'Overview', icon: 'settings' },
     { id: 'audio', label: 'Audio', icon: 'volume' },
     { id: 'network', label: 'Phone access', icon: 'phone' },
     { id: 'updates', label: 'Updates', icon: 'refresh' },
   ];
   const sectionCopy = {
-    overview: ['General', 'Your soundboard, at a glance.'],
+    overview: ['Overview', 'Your soundboard, at a glance.'],
     audio: ['Audio', 'Choose where your sounds play.'],
     network: ['Phone access', 'Choose how your phone connects to this PC.'],
     updates: ['Updates', 'Check your version and review new releases.'],
@@ -292,7 +300,7 @@ export default function DesktopApp() {
   return <main className={appClass}>
     <div className="desktop-window-strip" aria-hidden="true"/>
     <aside className="studio-sidebar" aria-label="Main navigation">
-      <div className="desktop-brand"><img src={ART} alt=""/><div><strong>SimplySound</strong><span>Soundboard settings</span></div></div>
+      <div className="desktop-brand"><img src={ART} alt=""/><div><strong>SimplySound</strong></div></div>
       <nav className="studio-navigation" aria-label="Settings sections">
         {navigation.map(item => <button key={item.id} type="button" className={`studio-nav-item ${activeSection === item.id ? 'active' : ''}`} aria-current={activeSection === item.id ? 'page' : undefined} onClick={() => setActiveSection(item.id)}><span className={`nav-symbol nav-symbol-${item.id}`}><Icon name={item.icon} size={16}/></span><span>{item.label}</span>{item.id === 'updates' && updateState === 'available' && <i className="nav-update-dot"/>}</button>)}
       </nav>
@@ -303,7 +311,16 @@ export default function DesktopApp() {
     </aside>
     <div className="studio-main">
       <section className="control-layout" key={activeSection}>
-      <div className={`control-heading ${activeSection === 'overview' ? 'is-overview' : ''}`}><div><h1>{sectionCopy[0]}</h1>{sectionCopy[1] && <p>{sectionCopy[1]}</p>}</div>{activeSection === 'overview' && <button type="button" className="open-soundboard" onClick={openSoundboard} disabled={openingSoundboard} aria-label="Open soundboard in your browser"><span>{openingSoundboard ? 'Opening…' : 'Open soundboard'}</span><Icon name="arrow" size={14}/></button>}</div>
+      <div className={`control-heading ${activeSection === 'overview' ? 'is-overview' : ''}`}>
+        <div className="heading-copy">
+          <div className="heading-title-row">
+            <h1>{sectionCopy[0]}</h1>
+            {activeSection === 'overview' && <span className="readiness-indicator" data-state={readinessState} role="status" aria-live="polite"><i/><span>{readinessLabel}</span></span>}
+          </div>
+          {sectionCopy[1] && <p>{sectionCopy[1]}</p>}
+        </div>
+        {activeSection === 'overview' && <button type="button" className="open-soundboard" onClick={openSoundboard} disabled={openingSoundboard} aria-label="Open soundboard in your browser"><span>{openingSoundboard ? 'Opening…' : 'Open soundboard'}</span><Icon name="arrow" size={14}/></button>}
+      </div>
       {!settings ? <div className="desktop-loading">Connecting to SimplySound…</div> : <>
         {activeSection === 'overview' && <>
         <section className="connect-panel">
@@ -333,6 +350,8 @@ export default function DesktopApp() {
             <div className="setting-inline"><div><strong>Hear sounds on this PC</strong><small>Play a local copy while sending audio to your output.</small></div><Switch label="Hear sounds on this PC" checked={settings.monitorLocally} onChange={monitorLocally => patchSettings({ monitorLocally }).catch(() => {})}/></div>
             {settings.monitorLocally && <DevicePicker id="monitor" label="Local playback" detail="Optional listening device; follows Windows by default." value={settings.monitorEndpointId || null} currentName={status?.monitorEndpoint} devices={devices} onChange={selectMonitorDevice}/>}
             <label className="master-level"><span><strong>Overall volume</strong><output>{Math.round(settings.masterVolume * 100)}%</output></span><input type="range" min="0" max="1" step=".01" value={settings.masterVolume} onChange={event => changeMasterVolume(Number(event.target.value))}/></label>
+            <div className="setting-inline virtual-mic-headroom"><div><strong>Reduce level for a virtual microphone</strong><small>Use this if sound clips on a virtual mic. Local playback stays unchanged.</small></div><Switch label="Reduce level for a virtual microphone" checked={settings.useVirtualMicHeadroom} onChange={useVirtualMicHeadroom => patchSettings({ useVirtualMicHeadroom }).catch(() => {})}/></div>
+            {settings.useVirtualMicHeadroom && <label className="master-level mic-output-level"><span><strong>Virtual microphone level</strong><output>{(settings.micOutputGain * 100).toFixed(1)}%</output></span><input type="range" min="0" max=".25" step=".005" value={settings.micOutputGain} onChange={event => changeMicOutputGain(Number(event.target.value))}/></label>}
             <button className="test-output" onClick={() => request('/api/audio/test', { method: 'POST' }).then(() => setToast('Test sound played')).catch(error => setToast(error.message))}>Play a test sound <Icon name="arrow" size={14}/></button>
             <div className="shortcut-summary">
               <div><strong>Global sound hotkeys</strong><small>Assign Ctrl + Alt shortcuts in a sound’s edit menu. They work while SimplySound is running, even in the background.</small></div>
@@ -392,10 +411,10 @@ export default function DesktopApp() {
           <div className="welcome-brand"><img src={ART} alt=""/><span>SimplySound <small>QUICK SETUP</small></span></div>
           <button type="button" className="welcome-later" onClick={completeSetup}>Set up later</button>
         </header>
-        <div className="welcome-progress" aria-label={`Step ${setupStep + 1} of 4`}>
-          {['Welcome', 'Networks', 'Firewall', 'Ready'].map((label, index) => <div key={label} className={`welcome-progress-step ${index === setupStep ? 'current' : ''} ${index < setupStep ? 'done' : ''}`}><i>{index < setupStep ? <Icon name="check" size={13}/> : String(index + 1).padStart(2, '0')}</i><span>{label}</span></div>)}
+        <div className="welcome-progress" role="list" aria-label={`Setup progress, step ${setupStep + 1} of 4`}>
+          {['Welcome', 'Networks', 'Firewall', 'Ready'].map((label, index) => <div key={label} role="listitem" aria-current={index === setupStep ? 'step' : undefined} className={`welcome-progress-step ${index === setupStep ? 'current' : ''} ${index < setupStep ? 'done' : ''}`}><i aria-hidden="true">{index < setupStep ? <Icon name="check" size={13}/> : String(index + 1).padStart(2, '0')}</i><span>{label}</span></div>)}
         </div>
-        <div className="welcome-content" key={setupStep}>
+        <div className="welcome-content" key={setupStep} aria-live="polite" aria-atomic="true">
           {setupStep === 0 && <div className="welcome-intro">
             <span className="welcome-hero-mark"><img src={ART} alt=""/><i/><i/><i/></span>
             <p className="welcome-eyebrow">YOUR SOUND. YOUR SPACE.</p>

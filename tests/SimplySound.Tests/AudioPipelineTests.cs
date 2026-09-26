@@ -4,6 +4,7 @@ using System.IO;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using NAudio.Wave;
+using NAudio.Wave.SampleProviders;
 using VRSoundboard;
 using Xunit;
 
@@ -65,6 +66,34 @@ public sealed class AudioPipelineTests
     }
 
     [Fact]
+    public async Task TrimmingAnAudioClipShorterThanTenMillisecondsKeepsAValidRange()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "SimplySound-short-sound-test-" + Guid.NewGuid().ToString("N"));
+        var path = Path.Combine(root, "short.wav");
+        try
+        {
+            Directory.CreateDirectory(root);
+            using (var writer = new WaveFileWriter(path, new WaveFormat(8000, 16, 1))) writer.WriteSamples(new short[8], 0, 8);
+            var storage = new Storage(root);
+            storage.Initialize();
+            var library = new SoundLibrary(storage);
+            await using var stream = File.OpenRead(path);
+            var sound = await library.ImportAsync(stream, "short.wav");
+
+            var updated = library.Update(sound.Id, clip => clip.EndSeconds = sound.SourceDurationSeconds / 2);
+
+            Assert.InRange(updated.EndSeconds!.Value, updated.StartSeconds, sound.SourceDurationSeconds);
+            Assert.True(updated.PlayDuration > 0);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            if (Directory.Exists(root) && Path.GetFileName(root).StartsWith("SimplySound-short-sound-test-", StringComparison.Ordinal))
+                Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public void GainChangesAreAppliedToSamplesAsTheyAreRead()
     {
         var source = new FloatSource(WaveFormat.CreateIeeeFloatWaveFormat(48000, 1), [1f, -0.5f, 0.25f]);
@@ -77,6 +106,22 @@ public sealed class AudioPipelineTests
         Assert.Equal(2, gain.Read(buffer, 0, 2));
         Assert.Equal([0.2f, -0.2f], buffer[..2]);
     }
+
+    [Theory]
+    [InlineData(false, 0.025f, 1f)]
+    [InlineData(true, 0.025f, 0.025f)]
+    [InlineData(true, 0.5f, 0.25f)]
+    [InlineData(true, -1f, 0f)]
+    public void VirtualMicrophoneHeadroomIsExplicitAndClamped(bool enabled, float configured, float expected)
+        => Assert.Equal(expected, AudioEngine.CalculateMainOutputGain(enabled, configured));
+
+    [Theory]
+    [InlineData("Speakers (Steam Streaming Microphone)", true)]
+    [InlineData("Virtual Cable Input", false)]
+    [InlineData("Speakers", false)]
+    [InlineData(null, false)]
+    public void LegacyHeadroomMigrationOnlyPreservesTheOldSteamMicSetup(string? endpointName, bool expected)
+        => Assert.Equal(expected, AppCoordinator.ShouldPreserveLegacyVirtualMicHeadroom(endpointName));
 
     [Fact]
     public void ChannelMappingDownmixesAndDuplicatesMonoWithoutChangingFrameCount()
@@ -104,12 +149,90 @@ public sealed class AudioPipelineTests
     public void NativePcmConversionClampsAndUsesSignedSixteenBitSamples()
     {
         var source = new FloatSource(WaveFormat.CreateIeeeFloatWaveFormat(48000, 1), [1.5f, -1.5f, .5f]);
-        var output = new NativeFormatWaveProvider(source, new WaveFormat(48000, 16, 1));
+        using var output = new NativeFormatWaveProvider(source, new WaveFormat(48000, 16, 1));
         var bytes = new byte[6];
         Assert.Equal(6, output.Read(bytes, 0, bytes.Length));
         Assert.Equal(short.MaxValue, BitConverter.ToInt16(bytes, 0));
         Assert.Equal(short.MinValue, BitConverter.ToInt16(bytes, 2));
         Assert.Equal(16384, BitConverter.ToInt16(bytes, 4));
+    }
+
+    [Fact]
+    public void NativePcmConversionWritesSignedTwentyFourBitSamplesInLittleEndianOrder()
+    {
+        var source = new FloatSource(WaveFormat.CreateIeeeFloatWaveFormat(48000, 1), [-1f, 0f, 1f]);
+        using var output = new NativeFormatWaveProvider(source, new WaveFormat(48000, 24, 1));
+        var bytes = new byte[9];
+
+        Assert.Equal(bytes.Length, output.Read(bytes, 0, bytes.Length));
+        Assert.Equal(new byte[] { 0x00, 0x00, 0x80, 0, 0, 0, 0xff, 0xff, 0x7f }, bytes);
+    }
+
+    [Fact]
+    public void NativePcmConversionClampsSignedThirtyTwoBitSamples()
+    {
+        var source = new FloatSource(WaveFormat.CreateIeeeFloatWaveFormat(48000, 1), [-1.5f, 0.5f, 1.5f]);
+        using var output = new NativeFormatWaveProvider(source, new WaveFormat(48000, 32, 1));
+        var bytes = new byte[12];
+
+        Assert.Equal(bytes.Length, output.Read(bytes, 0, bytes.Length));
+        Assert.Equal(int.MinValue, BitConverter.ToInt32(bytes, 0));
+        Assert.Equal(1_073_741_824, BitConverter.ToInt32(bytes, 4));
+        Assert.Equal(int.MaxValue, BitConverter.ToInt32(bytes, 8));
+    }
+
+    [Fact]
+    public void FailedPipelineConstructionReleasesTheSourceFile()
+    {
+        var path = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".wav");
+        try
+        {
+            using (var writer = new WaveFileWriter(path, new WaveFormat(48000, 16, 2))) writer.WriteSamples(new short[32], 0, 32);
+            var reader = new AudioFileReader(path);
+
+            Assert.Throws<NotSupportedException>(() => LowLatencyAudio.Create(reader, 1, new WaveFormat(48000, 8, 1), 1));
+
+            File.Delete(path);
+            Assert.False(File.Exists(path));
+        }
+        finally { if (File.Exists(path)) File.Delete(path); }
+    }
+
+    [Fact]
+    public void FormatConversionBuffersDoNotAllocateOnTheAudioReadPath()
+    {
+        var source = new FloatSource(WaveFormat.CreateIeeeFloatWaveFormat(48000, 2), new float[100_000]);
+        var mapped = new ChannelMappingSampleProvider(source, 6, preallocatedFrames: 256);
+        var gain = new GainSampleProvider(mapped, 1);
+        using var output = new NativeFormatWaveProvider(gain, new WaveFormat(48000, 16, 6), preallocatedFrames: 256);
+        var bytes = new byte[256 * 6 * 2];
+        for (var i = 0; i < 3; i++) Assert.Equal(bytes.Length, output.Read(bytes, 0, bytes.Length));
+
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        var read = 0;
+        for (var i = 0; i < 20; i++) read = output.Read(bytes, 0, bytes.Length);
+        var after = GC.GetAllocatedBytesForCurrentThread();
+
+        Assert.Equal(bytes.Length, read);
+        Assert.Equal(before, after);
+    }
+
+    [Fact]
+    public void ResamplingDoesNotAllocateOnTheSteadyStateAudioReadPath()
+    {
+        var source = new FloatSource(WaveFormat.CreateIeeeFloatWaveFormat(44100, 2), new float[200_000]);
+        var resampled = new WdlResamplingSampleProvider(source, 48000);
+        using var output = new NativeFormatWaveProvider(new GainSampleProvider(resampled, 1), new WaveFormat(48000, 16, 2), preallocatedFrames: 256);
+        var bytes = new byte[256 * 2 * 2];
+        for (var i = 0; i < 8; i++) Assert.Equal(bytes.Length, output.Read(bytes, 0, bytes.Length));
+
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        var read = 0;
+        for (var i = 0; i < 20; i++) read = output.Read(bytes, 0, bytes.Length);
+        var after = GC.GetAllocatedBytesForCurrentThread();
+
+        Assert.Equal(bytes.Length, read);
+        Assert.Equal(before, after);
     }
 
     [Fact]
@@ -121,15 +244,19 @@ public sealed class AudioPipelineTests
             using (var writer = new WaveFileWriter(path, new WaveFormat(8000, 16, 1))) writer.WriteSamples(new short[8], 0, 8);
             var format = WaveFormat.CreateIeeeFloatWaveFormat(8000, 1);
             var switching = new SwitchingWaveProvider(format);
-            switching.Replace(new AudioFileReader(path), new ByteSource(format, [1, 2, 3, 4]));
+            var firstSource = new ByteSource(format, [1, 2, 3, 4]);
+            switching.Replace(new AudioFileReader(path), firstSource);
             var first = new byte[4];
             switching.Read(first, 0, first.Length);
             Assert.Equal(new byte[] { 1, 2, 3, 4 }, first);
-            switching.Replace(new AudioFileReader(path), new ByteSource(format, [9, 8, 7, 6]));
+            var nextSource = new ByteSource(format, [9, 8, 7, 6]);
+            switching.Replace(new AudioFileReader(path), nextSource);
+            Assert.True(firstSource.Disposed);
             var next = new byte[4];
             switching.Read(next, 0, next.Length);
             Assert.Equal(new byte[] { 9, 8, 7, 6 }, next);
             switching.Clear();
+            Assert.True(nextSource.Disposed);
             Assert.Equal(4, switching.Read(next, 0, next.Length));
             Assert.Equal(new byte[4], next);
         }
@@ -151,9 +278,10 @@ public sealed class AudioPipelineTests
         }
     }
 
-    private sealed class ByteSource(WaveFormat waveFormat, byte[] bytes) : IWaveProvider
+    private sealed class ByteSource(WaveFormat waveFormat, byte[] bytes) : IWaveProvider, IDisposable
     {
         private bool _read;
+        public bool Disposed { get; private set; }
         public WaveFormat WaveFormat { get; } = waveFormat;
         public int Read(byte[] buffer, int offset, int count)
         {
@@ -163,6 +291,7 @@ public sealed class AudioPipelineTests
             Array.Copy(bytes, 0, buffer, offset, size);
             return size;
         }
+        public void Dispose() => Disposed = true;
     }
 }
 
@@ -248,6 +377,14 @@ public sealed class RuntimeBehaviorTests
         Assert.Contains("\"pairingEnabled\":true", json);
         Assert.DoesNotContain("private-pairing-secret", json);
         Assert.DoesNotContain("pairingToken", json);
+    }
+
+    [Fact]
+    public void PublicSettingsExposeVirtualMicHeadroomControl()
+    {
+        var settings = new AppSettings { UseVirtualMicHeadroom = true };
+        var json = JsonSerializer.Serialize(AppSettingsView.From(settings), new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.Contains("\"useVirtualMicHeadroom\":true", json);
     }
 
     [Theory]

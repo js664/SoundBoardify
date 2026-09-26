@@ -91,7 +91,7 @@ public sealed class Storage
         return settings.WebEnabled == defaults.WebEnabled && settings.Port == defaults.Port && settings.LanAccess == defaults.LanAccess &&
             !settings.TailscaleAccess && settings.EndpointId is null && settings.MonitorEndpointId is null && settings.ButtonDensity == defaults.ButtonDensity &&
             settings.ReconnectAudio == defaults.ReconnectAudio && settings.MasterVolume == defaults.MasterVolume && settings.MicOutputGain == defaults.MicOutputGain &&
-            settings.MonitorLocally && settings.LocalMonitorPreferenceVersion <= 1 && !settings.StartWithWindows && !settings.StartMinimized &&
+            !settings.UseVirtualMicHeadroom && settings.OutputHeadroomPreferenceVersion <= 1 && settings.MonitorLocally && settings.LocalMonitorPreferenceVersion <= 1 && !settings.StartWithWindows && !settings.StartMinimized &&
             !settings.MinimizeToTray && settings.Theme == defaults.Theme && settings.PairingToken is null && settings.MaxUploadBytes == defaults.MaxUploadBytes;
     }
     private SqliteConnection Connect()

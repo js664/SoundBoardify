@@ -46,7 +46,7 @@ public sealed class SteamMicDiagnostic(AudioExecutionContext context, AudioDevic
             // Steam-mic trim before the virtual endpoint so capture remains unclipped.
             var testSoundId = Guid.NewGuid();
             Interlocked.Exchange(ref playStartedTicks, Stopwatch.GetTimestamp());
-            engine.Play(new Sound { Id = testSoundId, Name = "Steam mic path check", StoredFilename = Path.GetFileName(path), SourceDurationSeconds = 1.2, OutputGain = .75f, Mode = "retrigger" }, .8f, false);
+            engine.Play(new Sound { Id = testSoundId, Name = "Steam mic path check", StoredFilename = Path.GetFileName(path), SourceDurationSeconds = 1.2, OutputGain = .75f, Mode = "retrigger" }, .8f, false, micOutputGain: .025f, useVirtualMicHeadroom: true);
             await Task.Delay(500, cancellationToken);
             engine.SetSoundOutputGain(testSoundId, .25f);
             await Task.Delay(500, cancellationToken);

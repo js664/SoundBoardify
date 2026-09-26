@@ -174,9 +174,9 @@ public sealed class AudioEngine(AudioDeviceService devices, Storage storage, Aud
         if (stopped is not null) Changed?.Invoke("sound-stopped", new { id = stopped });
         Changed?.Invoke("audio-device", new { status = Status, endpoint = EndpointName });
     }
-    public void Play(Sound sound, float masterVolume, bool monitorLocally = false, float micOutputGain = 0.025f, string? monitorEndpointId = null)
+    public void Play(Sound sound, float masterVolume, bool monitorLocally = false, float micOutputGain = 0.025f, string? monitorEndpointId = null, bool useVirtualMicHeadroom = false)
     {
-        if (!context.IsCurrent) { context.Invoke(() => Play(sound, masterVolume, monitorLocally, micOutputGain, monitorEndpointId)); return; }
+        if (!context.IsCurrent) { context.Invoke(() => Play(sound, masterVolume, monitorLocally, micOutputGain, monitorEndpointId, useVirtualMicHeadroom)); return; }
         lock (_gate)
         {
             if (_soundId == sound.Id && sound.Mode == "toggle") { StopLocked(); Changed?.Invoke("sound-stopped", new { id = sound.Id }); return; }
@@ -187,20 +187,25 @@ public sealed class AudioEngine(AudioDeviceService devices, Storage storage, Aud
             _playClock.Reset();
             if (previous is not null && previous != sound.Id) Changed?.Invoke("sound-stopped", new { id = previous });
             if (_device is null) throw new InvalidOperationException(_status);
+            AudioFileReader? preparedReader = null;
             try
             {
                 var path = Path.Combine(storage.CachePath, sound.StoredFilename);
-                var micGain = _device.FriendlyName.Contains("Steam Streaming Microphone", StringComparison.OrdinalIgnoreCase)
-                    ? Math.Clamp(micOutputGain, 0, 0.25f)
-                    : 1f;
+                var micGain = CalculateMainOutputGain(useVirtualMicHeadroom, micOutputGain);
                 _activeSoundOutputGain = sound.OutputGain;
-                var reader = new AudioFileReader(path) { Volume = 1 };
-                reader.CurrentTime = TimeSpan.FromSeconds(sound.StartSeconds);
+                preparedReader = new AudioFileReader(path) { Volume = 1 };
+                preparedReader.CurrentTime = TimeSpan.FromSeconds(sound.StartSeconds);
                 _startSeconds = sound.StartSeconds;
                 _endSeconds = sound.EndSeconds ?? sound.SourceDurationSeconds;
                 if (_output is null || _source is null) throw new InvalidOperationException(_status);
-                var mainPipeline = LowLatencyAudio.Create(reader, _endSeconds - _startSeconds, _device.AudioClient.MixFormat, sound.OutputGain * masterVolume * micGain);
-                _source.Replace(reader, mainPipeline.WaveProvider);
+                var mainPipeline = LowLatencyAudio.Create(preparedReader, _endSeconds - _startSeconds, _device.AudioClient.MixFormat, sound.OutputGain * masterVolume * micGain);
+                try { _source.Replace(preparedReader, mainPipeline.WaveProvider); }
+                catch
+                {
+                    if (mainPipeline.WaveProvider is IDisposable disposable) disposable.Dispose();
+                    throw;
+                }
+                preparedReader = null;
                 _gainStage = mainPipeline.GainStage;
                 _mainGainMultiplier = masterVolume * micGain;
                 if (monitorLocally)
@@ -228,10 +233,21 @@ public sealed class AudioEngine(AudioDeviceService devices, Storage storage, Aud
                         else _monitorEndpointName = _monitorDevice.FriendlyName;
                         if (_monitorSource is not null && _monitorDevice is not null)
                         {
-                            var monitorReader = new AudioFileReader(path) { Volume = 1 };
-                            monitorReader.CurrentTime = TimeSpan.FromSeconds(sound.StartSeconds);
-                            var monitorPipeline = LowLatencyAudio.Create(monitorReader, _endSeconds - _startSeconds, _monitorDevice.AudioClient.MixFormat, sound.OutputGain * masterVolume);
-                            _monitorSource.Replace(monitorReader, monitorPipeline.WaveProvider);
+                            AudioFileReader? monitorReader = new AudioFileReader(path) { Volume = 1 };
+                            AudioPipeline monitorPipeline;
+                            try
+                            {
+                                monitorReader.CurrentTime = TimeSpan.FromSeconds(sound.StartSeconds);
+                                monitorPipeline = LowLatencyAudio.Create(monitorReader, _endSeconds - _startSeconds, _monitorDevice.AudioClient.MixFormat, sound.OutputGain * masterVolume);
+                                try { _monitorSource.Replace(monitorReader, monitorPipeline.WaveProvider); }
+                                catch
+                                {
+                                    if (monitorPipeline.WaveProvider is IDisposable disposable) disposable.Dispose();
+                                    throw;
+                                }
+                                monitorReader = null;
+                            }
+                            finally { monitorReader?.Dispose(); }
                             _monitorGainStage = monitorPipeline.GainStage;
                             _monitorGainMultiplier = masterVolume;
                         }
@@ -246,7 +262,8 @@ public sealed class AudioEngine(AudioDeviceService devices, Storage storage, Aud
             }
             catch (Exception ex)
             {
-                    StopLocked(); _status = "Playback failed: " + ex.Message; Log.Error(ex, "Playback failed");
+                preparedReader?.Dispose();
+                StopLocked(); _status = "Playback failed: " + ex.Message; Log.Error(ex, "Playback failed");
                 Changed?.Invoke("audio-device", new { status = _status, endpoint = EndpointName });
                 throw;
             }
@@ -271,14 +288,16 @@ public sealed class AudioEngine(AudioDeviceService devices, Storage storage, Aud
             if (_monitorGainStage is not null) _monitorGainStage.Gain = _activeSoundOutputGain * _monitorGainMultiplier;
         }
     }
-    public void SetMixLevels(float masterVolume, float micOutputGain)
+    internal static float CalculateMainOutputGain(bool useVirtualMicHeadroom, float micOutputGain)
+        => useVirtualMicHeadroom ? Math.Clamp(micOutputGain, 0, 0.25f) : 1f;
+
+    public void SetMixLevels(float masterVolume, float micOutputGain, bool useVirtualMicHeadroom)
     {
-        if (!context.IsCurrent) { context.Invoke(() => SetMixLevels(masterVolume, micOutputGain)); return; }
+        if (!context.IsCurrent) { context.Invoke(() => SetMixLevels(masterVolume, micOutputGain, useVirtualMicHeadroom)); return; }
         lock (_gate)
         {
             var master = Math.Clamp(masterVolume, 0, 1);
-            var mic = _device?.FriendlyName.Contains("Steam Streaming Microphone", StringComparison.OrdinalIgnoreCase) == true
-                ? Math.Clamp(micOutputGain, 0, 0.25f) : 1f;
+            var mic = CalculateMainOutputGain(useVirtualMicHeadroom, micOutputGain);
             _mainGainMultiplier = master * mic;
             _monitorGainMultiplier = master;
             if (_gainStage is not null) _gainStage.Gain = _activeSoundOutputGain * _mainGainMultiplier;
@@ -343,11 +362,23 @@ internal sealed class SwitchingWaveProvider(WaveFormat waveFormat) : IWaveProvid
     public WaveFormat WaveFormat { get; } = waveFormat;
     public void Replace(AudioFileReader reader, IWaveProvider source)
     {
-        lock (_gate) { _reader?.Dispose(); _reader = reader; _current = source; }
+        lock (_gate)
+        {
+            _reader?.Dispose();
+            if (_current is IDisposable previous) previous.Dispose();
+            _reader = reader;
+            _current = source;
+        }
     }
     public void Clear()
     {
-        lock (_gate) { _current = null; _reader?.Dispose(); _reader = null; }
+        lock (_gate)
+        {
+            var current = _current;
+            _current = null;
+            _reader?.Dispose(); _reader = null;
+            if (current is IDisposable disposable) disposable.Dispose();
+        }
     }
     public int Read(byte[] buffer, int offset, int count)
     {
@@ -355,12 +386,14 @@ internal sealed class SwitchingWaveProvider(WaveFormat waveFormat) : IWaveProvid
         lock (_gate)
         {
             if (_current is null) return count;
-            var read = _current.Read(buffer, offset, count);
+            var current = _current;
+            var read = current.Read(buffer, offset, count);
             if (read < count)
             {
                 Array.Clear(buffer, offset + read, count - read);
                 _current = null;
                 _reader?.Dispose(); _reader = null;
+                if (current is IDisposable disposable) disposable.Dispose();
                 return count;
             }
             return read;

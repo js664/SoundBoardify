@@ -53,8 +53,10 @@ public sealed class AppSettings
     public int ButtonDensity { get; set; } = 9;
     public bool ReconnectAudio { get; set; } = true;
     public float MasterVolume { get; set; } = 1;
-    // Headroom compensation for the strong gain in Steam's virtual mic capture path.
+    // Optional headroom for virtual microphone endpoints. Kept independent of device names.
     public float MicOutputGain { get; set; } = 0.025f;
+    public bool UseVirtualMicHeadroom { get; set; }
+    public int OutputHeadroomPreferenceVersion { get; set; }
     public bool MonitorLocally { get; set; } = true;
     public int LocalMonitorPreferenceVersion { get; set; }
     public bool StartWithWindows { get; set; }
@@ -77,6 +79,7 @@ public sealed record AppSettingsView(
     bool ReconnectAudio,
     float MasterVolume,
     float MicOutputGain,
+    bool UseVirtualMicHeadroom,
     bool MonitorLocally,
     bool StartWithWindows,
     bool StartMinimized,
@@ -96,6 +99,7 @@ public sealed record AppSettingsView(
         settings.ReconnectAudio,
         settings.MasterVolume,
         settings.MicOutputGain,
+        settings.UseVirtualMicHeadroom,
         settings.MonitorLocally,
         settings.StartWithWindows,
         settings.StartMinimized,

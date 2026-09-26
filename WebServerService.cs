@@ -240,7 +240,7 @@ public sealed class WebServerService(AppCoordinator coordinator, WebSocketHub hu
             var oldPort = coordinator.Settings.Port;
             try
             {
-                var settings = coordinator.UpdateSettings(s => { if (patch.Port is not null) s.Port = patch.Port.Value; if (patch.ButtonDensity is not null) s.ButtonDensity = patch.ButtonDensity.Value; if (patch.MasterVolume is not null) s.MasterVolume = patch.MasterVolume.Value; if (patch.MicOutputGain is not null) s.MicOutputGain = patch.MicOutputGain.Value; if (patch.LanAccess is not null) s.LanAccess = patch.LanAccess.Value; if (patch.TailscaleAccess is not null) s.TailscaleAccess = patch.TailscaleAccess.Value; if (patch.PairingToken is not null) s.PairingToken = patch.PairingToken; if (patch.ClearPairingToken) s.PairingToken = null; if (patch.MaxUploadBytes is not null) s.MaxUploadBytes = patch.MaxUploadBytes.Value; if (patch.MonitorLocally is not null) s.MonitorLocally = patch.MonitorLocally.Value; if (patch.ReconnectAudio is not null) s.ReconnectAudio = patch.ReconnectAudio.Value; });
+                var settings = coordinator.UpdateSettings(s => { if (patch.Port is not null) s.Port = patch.Port.Value; if (patch.ButtonDensity is not null) s.ButtonDensity = patch.ButtonDensity.Value; if (patch.MasterVolume is not null) s.MasterVolume = patch.MasterVolume.Value; if (patch.MicOutputGain is not null) s.MicOutputGain = patch.MicOutputGain.Value; if (patch.UseVirtualMicHeadroom is not null) s.UseVirtualMicHeadroom = patch.UseVirtualMicHeadroom.Value; if (patch.LanAccess is not null) s.LanAccess = patch.LanAccess.Value; if (patch.TailscaleAccess is not null) s.TailscaleAccess = patch.TailscaleAccess.Value; if (patch.PairingToken is not null) s.PairingToken = patch.PairingToken; if (patch.ClearPairingToken) s.PairingToken = null; if (patch.MaxUploadBytes is not null) s.MaxUploadBytes = patch.MaxUploadBytes.Value; if (patch.MonitorLocally is not null) s.MonitorLocally = patch.MonitorLocally.Value; if (patch.ReconnectAudio is not null) s.ReconnectAudio = patch.ReconnectAudio.Value; });
                 if (ShouldRestartForPortChange(patch.Port, oldPort, coordinator.ActiveWebPort)) _ = RestartAfterPortChangeAsync();
                 return Results.Ok(AppSettingsView.From(settings));
             }
@@ -253,7 +253,7 @@ public sealed class WebServerService(AppCoordinator coordinator, WebSocketHub hu
         });
         app.MapPost("/api/audio/device", (DeviceSelection body) => { coordinator.SelectDevice(body.Id); return Results.Ok(new { status = coordinator.Audio.Status, endpoint = coordinator.Audio.EndpointName }); });
         app.MapPost("/api/audio/monitor-device", (DeviceSelection body) => { coordinator.SelectMonitorDevice(body.Id); return Results.Ok(new { monitorEndpointId = coordinator.Settings.MonitorEndpointId }); });
-        app.MapPost("/api/audio/test", () => { try { var settings = coordinator.Settings; TestTone.Play(coordinator.Audio, settings.MasterVolume, coordinator.Storage, settings.MonitorLocally, settings.MonitorEndpointId); return Results.Ok(); } catch (Exception ex) { return Results.Problem(ex.Message); } });
+        app.MapPost("/api/audio/test", () => { try { var settings = coordinator.Settings; TestTone.Play(coordinator.Audio, settings.MasterVolume, coordinator.Storage, settings.MonitorLocally, settings.MonitorEndpointId, settings.UseVirtualMicHeadroom); return Results.Ok(); } catch (Exception ex) { return Results.Problem(ex.Message); } });
         app.MapPost("/api/audio/diagnose", async (HttpContext context) =>
         {
             var remote = context.Connection.RemoteIpAddress;
@@ -314,5 +314,5 @@ public sealed class WebServerService(AppCoordinator coordinator, WebSocketHub hu
     }
 }
 public record SoundPatch(string? Name, float? Volume, float? OutputGain, double? StartSeconds, JsonElement EndSeconds, string? Mode, string? Icon, string? ButtonLabel, string? Hotkey = null);
-public record SettingsPatch(int? ButtonDensity, float? MasterVolume, float? MicOutputGain, bool? LanAccess, string? PairingToken, long? MaxUploadBytes, bool? MonitorLocally, bool? ReconnectAudio, int? Port, bool ClearPairingToken = false, bool? TailscaleAccess = null);
+public record SettingsPatch(int? ButtonDensity, float? MasterVolume, float? MicOutputGain, bool? LanAccess, string? PairingToken, long? MaxUploadBytes, bool? MonitorLocally, bool? ReconnectAudio, int? Port, bool ClearPairingToken = false, bool? TailscaleAccess = null, bool? UseVirtualMicHeadroom = null);
 public record DeviceSelection(string? Id);
