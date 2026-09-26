@@ -425,56 +425,6 @@
 .options-only .welcome-back { color: #b1bac7 !important; }
 .options-only .welcome-back:hover:not(:disabled) { color: #fff !important; background: #303640; }
 .options-only .welcome-next { background: #3478f6; box-shadow: 0 3px 10px rgba(32,91,190,.18); }
-.options-only .welcome-dialog {
-  --welcome-panel: #252a31;
-  --welcome-panel-raised: #1d2229;
-  --welcome-line: #394351;
-  --welcome-text: #f2f5fa;
-  --welcome-muted: #b1bdcc;
-  --welcome-blue: #4b86f4;
-  --welcome-blue-hover: #6397ff;
-  color: var(--welcome-text);
-  background: var(--welcome-panel);
-  border-color: #3a4552;
-}
-.options-only .welcome-header,.options-only .welcome-footer { background: #20252c; border-color: var(--welcome-line); }
-.options-only .welcome-progress-step { color: #a4afbe; }
-.options-only .welcome-progress-step:not(:last-child)::after { background: #3a4552; }
-.options-only .welcome-progress-step.done:not(:last-child)::after { background: var(--welcome-blue); }
-.options-only .welcome-progress-step i { color: #c3cedc; background: #303741; border-color: #465260; }
-.options-only .welcome-progress-step.current { color: #edf3fc; }
-.options-only .welcome-progress-step.current i { background: var(--welcome-blue); border-color: #78a6ff; box-shadow: 0 0 0 4px rgba(75,134,244,.16); }
-.options-only .welcome-progress-step.done i { color: white; background: #3474d9; border-color: #548ce8; }
-.options-only .welcome-eyebrow { color: #91baff; }
-.options-only .welcome-content h1,.options-only .welcome-choice strong,.options-only .firewall-result strong,.options-only .welcome-finish-card strong { color: var(--welcome-text); }
-.options-only .welcome-lead,.options-only .welcome-choice small,.options-only .welcome-finish-card small { color: var(--welcome-muted); }
-.options-only .welcome-hero-mark { background: #2a313a; border-color: #414d5c; }
-.options-only .welcome-choice-list,.options-only .firewall-result,.options-only .welcome-finish-card { background: var(--welcome-panel-raised); border-color: var(--welcome-line); }
-.options-only .welcome-choice { border-color: transparent; }
-.options-only .welcome-choice:has(.desktop-switch.on) { background: rgba(75,134,244,.055); border-color: rgba(111,163,255,.16); }
-.options-only .welcome-choice strong em { color: #a8c7ff; background: rgba(75,134,244,.18); }
-.options-only .welcome-hint { color: #c4d0e1; background: rgba(75,134,244,.055); border-color: rgba(111,163,255,.12); }
-.options-only .welcome-hint svg,.options-only .firewall-result-icon { color: #9bc0ff; }
-.options-only .welcome-hint.needs-attention { color: #f0d39a; background: rgba(214,164,73,.12); border-color: rgba(235,190,111,.22); }
-.options-only .welcome-hint.needs-attention svg { color: #f0c978; }
-.options-only .firewall-result-icon { background: #2c3b50; }
-.options-only .firewall-result.denied { color: #f0d39a; }
-.options-only .welcome-firewall-button,.options-only .welcome-next { background: var(--welcome-blue); }
-.options-only .welcome-firewall-button:hover:not(:disabled),.options-only .welcome-next:hover:not(:disabled) { background: var(--welcome-blue-hover); box-shadow: 0 6px 18px rgba(42,104,211,.28); }
-.options-only .manual-firewall { border-color: var(--welcome-line); }
-.options-only .manual-firewall-toggle strong { color: var(--welcome-text); }
-.options-only .manual-firewall-toggle small { color: var(--welcome-muted); }
-.options-only .manual-firewall-toggle b { color: #9bc0ff; }
-.options-only .manual-command-panel textarea { color: #d7e5fb; background: #171b21; border-color: #414e5d; }
-.options-only .manual-command-panel>p { color: var(--welcome-muted); }
-.options-only .manual-command-panel>p strong { color: var(--welcome-text); }
-.options-only .welcome-ready-mark { color: #eff6ff; background: #3474d9; box-shadow: 0 0 0 7px rgba(75,134,244,.13); }
-.options-only .welcome-finish-card small.welcome-tail-link { color: #a7c8ff; }
-.options-only .welcome-error { color: #ffc9c1; border-color: rgba(255,150,137,.25); }
-.options-only .welcome-back { color: var(--welcome-muted) !important; }
-.options-only .welcome-back:hover:not(:disabled) { color: var(--welcome-text) !important; background: #303741; }
-.options-only .welcome-next { box-shadow: 0 3px 10px rgba(42,104,211,.22); }
-.options-only .welcome-dialog :focus-visible { outline-color: #9fc2ff; }
 @media (prefers-reduced-motion: reduce) {
   .options-only .welcome-dialog *, .options-only .welcome-dialog *::before, .options-only .welcome-dialog *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .01ms !important; }
 }
