@@ -76,6 +76,9 @@ public sealed class WebSocketHub
 
 public sealed class WebServerService(AppCoordinator coordinator, WebSocketHub hub, SteamMicDiagnostic diagnostic, MarketplaceService marketplace)
 {
+    private const long MaximumUploadBytes = 200L * 1024 * 1024;
+    private const long ImageUploadBytes = 5L * 1024 * 1024;
+    private const long MultipartOverheadBytes = 1024 * 1024;
     private WebApplication? _app;
     public bool Running => _app is not null;
     public string? LastError { get; private set; }
@@ -96,11 +99,14 @@ public sealed class WebServerService(AppCoordinator coordinator, WebSocketHub hu
     private async Task StartAtPortAsync(int port)
     {
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = AppContext.BaseDirectory, WebRootPath = Path.Combine(AppContext.BaseDirectory, "Web") });
-        builder.WebHost.UseKestrel(o => { o.ListenAnyIP(port); o.Limits.MaxRequestBodySize = coordinator.Settings.MaxUploadBytes + 1024 * 1024; });
-        builder.Services.Configure<FormOptions>(o => o.MultipartBodyLengthLimit = coordinator.Settings.MaxUploadBytes);
+        builder.WebHost.UseKestrel(o => { o.ListenAnyIP(port); o.Limits.MaxRequestBodySize = MaximumUploadBytes + MultipartOverheadBytes; });
+        builder.Services.Configure<FormOptions>(o => o.MultipartBodyLengthLimit = MaximumUploadBytes);
         var app = builder.Build();
         app.Use(async (context, next) =>
         {
+            var requestSize = context.Features.Get<IHttpMaxRequestBodySizeFeature>();
+            if (requestSize is { IsReadOnly: false })
+                requestSize.MaxRequestBodySize = GetRequestBodyLimit(context.Request.Method, context.Request.Path.Value ?? string.Empty, coordinator.Settings.MaxUploadBytes);
             // The service listens on all interfaces, so reject DNS-rebinding hosts and
             // cross-origin browser requests before they can reach the control API.
             if (!IsRequestHostAllowed(context.Request.Host.Host, context.Connection.LocalIpAddress) ||
@@ -279,6 +285,21 @@ public sealed class WebServerService(AppCoordinator coordinator, WebSocketHub hu
         catch (Exception ex) { Log.Error(ex, "Could not restart web server on the requested or fallback port"); }
     }
     public static int FallbackPort(int preferred) => preferred == 6669 ? 6769 : 6669;
+    internal static long GetRequestBodyLimit(string method, string path, long configuredUploadBytes)
+    {
+        var uploadLimit = Math.Clamp(configuredUploadBytes, 1024 * 1024, MaximumUploadBytes);
+        if (HttpMethods.IsPost(method))
+        {
+            var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            if (segments is { Length: 4 } &&
+                segments[0].Equals("api", StringComparison.OrdinalIgnoreCase) &&
+                segments[1].Equals("sounds", StringComparison.OrdinalIgnoreCase) &&
+                Guid.TryParse(segments[2], out _) &&
+                segments[3].Equals("image", StringComparison.OrdinalIgnoreCase))
+                uploadLimit = ImageUploadBytes;
+        }
+        return uploadLimit + MultipartOverheadBytes;
+    }
     public static bool ShouldRestartForPortChange(int? requestedPort, int previousPreference, int activePort)
         => requestedPort is int port && (port != previousPreference || port != activePort);
     public static bool IsPairingAuthorized(System.Net.IPAddress? remote, string? token, string? headerToken, string? queryToken)

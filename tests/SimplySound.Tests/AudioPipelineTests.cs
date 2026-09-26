@@ -330,6 +330,21 @@ public sealed class RuntimeBehaviorTests
     public void BusyWebPortUsesTheExpectedFallback(int preferred, int expected)
         => Assert.Equal(expected, WebServerService.FallbackPort(preferred));
 
+    [Fact]
+    public void RequestLimitsFollowCurrentSoundSettingAndKeepArtworkAtFiveMegabytes()
+    {
+        const long oneMiB = 1024 * 1024;
+        const long fiveMiB = 5 * oneMiB;
+        const long thirtyOneMiB = 31 * oneMiB;
+        var imagePath = $"/api/sounds/{Guid.NewGuid()}/image";
+
+        Assert.Equal(2 * oneMiB, WebServerService.GetRequestBodyLimit("POST", "/api/sounds", oneMiB));
+        Assert.Equal(thirtyOneMiB, WebServerService.GetRequestBodyLimit("POST", "/api/sounds", 30 * oneMiB));
+        Assert.Equal(fiveMiB + oneMiB, WebServerService.GetRequestBodyLimit("POST", imagePath, oneMiB));
+        Assert.Equal(fiveMiB + oneMiB, WebServerService.GetRequestBodyLimit("POST", imagePath, 30 * oneMiB));
+        Assert.Equal(2 * oneMiB, WebServerService.GetRequestBodyLimit("GET", imagePath, oneMiB));
+    }
+
     [Theory]
     [InlineData(null, 6769, 6669, false)]
     [InlineData(6769, 6769, 6769, false)]
