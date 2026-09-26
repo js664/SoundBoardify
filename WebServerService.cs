@@ -108,7 +108,7 @@ public sealed class WebServerService(AppCoordinator coordinator, WebSocketHub hu
             await next();
         });
         app.UseWebSockets(); app.UseDefaultFiles(); app.UseStaticFiles();
-        app.MapGet("/api/status", () => Results.Ok(new { server = "running", activePort = coordinator.ActiveWebPort, audio = coordinator.Audio.Status, endpoint = coordinator.Audio.EndpointName, monitorEnabled = coordinator.Settings.MonitorLocally, monitorEndpoint = coordinator.Settings.MonitorLocally ? coordinator.Settings.MonitorEndpointId is null ? coordinator.Devices.DefaultRenderName() : coordinator.Devices.Enumerate(coordinator.Settings.MonitorEndpointId).FirstOrDefault(d => d.Id == coordinator.Settings.MonitorEndpointId)?.Name : null, playback = coordinator.Audio.Playback, clients = hub.ClientCount, url = coordinator.PhoneUrl, wifiUrl = coordinator.PhoneUrl, tailscaleUrl = coordinator.TailscalePhoneUrl }));
+        app.MapGet("/api/status", () => Results.Ok(new { server = "running", activePort = coordinator.ActiveWebPort, audio = coordinator.Audio.Status, endpoint = coordinator.Audio.EndpointName, monitorEnabled = coordinator.Settings.MonitorLocally, monitorEndpoint = coordinator.Settings.MonitorLocally ? coordinator.Devices.DeviceName(coordinator.Settings.MonitorEndpointId) : null, playback = coordinator.Audio.Playback, clients = hub.ClientCount, url = coordinator.PhoneUrl, wifiUrl = coordinator.PhoneUrl, tailscaleUrl = coordinator.TailscalePhoneUrl }));
         app.MapGet("/api/phone/qr", (HttpContext context) =>
         {
             // The desktop QR is deliberately Wi-Fi/LAN only. Tailscale has a separate copyable link.

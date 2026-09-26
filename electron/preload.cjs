@@ -15,4 +15,5 @@ contextBridge.exposeInMainWorld('SimplySoundDesktop', Object.freeze({
   getHotkeyStatus: () => ipcRenderer.invoke('SimplySound:hotkey-status'),
   checkForUpdates: () => ipcRenderer.invoke('SimplySound:check-updates'),
   openRelease: url => ipcRenderer.invoke('SimplySound:open-release', url),
+  openSoundboard: () => ipcRenderer.invoke('SimplySound:open-soundboard'),
 }));

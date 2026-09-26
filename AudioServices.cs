@@ -84,6 +84,20 @@ public sealed class AudioDeviceService(AudioExecutionContext context) : IDisposa
         try { using var device = DefaultRender(); return device.FriendlyName; }
         catch (Exception ex) { Log.Warning(ex, "Default Windows playback endpoint is unavailable"); return null; }
     });
+    public string? DeviceName(string? endpointId)
+    {
+        if (!context.IsCurrent) return context.Invoke(() => DeviceName(endpointId));
+        try
+        {
+            using var device = endpointId is null ? DefaultRender() : Enumerator.GetDevice(endpointId);
+            return device.FriendlyName;
+        }
+        catch (Exception ex) when (ex is NAudio.MmException or COMException or InvalidOperationException or ArgumentException)
+        {
+            Log.Debug(ex, "Could not resolve playback endpoint name {EndpointId}", endpointId);
+            return null;
+        }
+    }
     public void Dispose() => context.Invoke(() => { _enumerator?.Dispose(); _enumerator = null; });
 }
 

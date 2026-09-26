@@ -7,7 +7,7 @@ const net = require('node:net');
 const { isNewerVersion, isSimplySoundReleaseAssetUrl, isSimplySoundReleaseUrl, selectNewestRelease } = require('./version-utils.cjs');
 const { createMarketplaceBridge } = require('./marketplace-bridge.cjs');
 const { buildFirewallCommand } = require('./firewall-command.cjs');
-const { isSoundboardWindowTarget } = require('./soundboard-link.cjs');
+const { openSoundboardInBrowser } = require('./soundboard-link.cjs');
 
 app.setName('SimplySound');
 app.setAppUserModelId('com.simplysound.desktop');
@@ -171,21 +171,17 @@ async function createWindow(port) {
   });
   mainWindow.once('ready-to-show', () => mainWindow.show());
   mainWindow.on('closed', () => { mainWindow = null; });
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (isSoundboardWindowTarget(appOrigin, url)) {
-      void shell.openExternal(url).catch(error => {
-        console.error('Could not open the SimplySound soundboard:', error);
-        dialog.showErrorBox('Could not open soundboard', 'SimplySound could not open the soundboard in your browser. Check that a default browser is installed, then try again.');
-      });
-    }
-    return { action: 'deny' };
-  });
+  mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   mainWindow.webContents.on('will-navigate', (event, url) => {
     try { if (new URL(url).origin !== appOrigin) event.preventDefault(); }
     catch { event.preventDefault(); }
   });
   await mainWindow.loadURL(`http://127.0.0.1:${port}/?desktop=1`);
 }
+
+ipcMain.handle('SimplySound:open-soundboard', async event => {
+  return openSoundboardInBrowser({ sender: event.sender, mainWindowWebContents: mainWindow?.webContents, port: activePort, openExternal: url => shell.openExternal(url) });
+});
 
 ipcMain.handle('SimplySound:configure-firewall', async (event, options) => {
   if (!mainWindow || event.sender !== mainWindow.webContents || !stableBackendPath) throw new Error('Firewall setup is only available from the SimplySound desktop window.');
