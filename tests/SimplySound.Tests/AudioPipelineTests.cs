@@ -369,6 +369,29 @@ public sealed class RuntimeBehaviorTests
     public void PairingTreatsMappedLoopbackAsLocal()
         => Assert.True(WebServerService.IsPairingAuthorized(IPAddress.Parse("::ffff:127.0.0.1"), "secret", null, null));
 
+    [Theory]
+    [InlineData("192.168.1.20", "192.168.1.20", true)]
+    [InlineData("100.88.2.3", "100.88.2.3", true)]
+    [InlineData("127.0.0.1", "127.0.0.1", true)]
+    [InlineData("localhost", "127.0.0.1", true)]
+    [InlineData("attacker.example", "192.168.1.20", false)]
+    [InlineData("192.168.1.21", "192.168.1.20", false)]
+    public void HostMustResolveToTheInterfaceReceivingTheRequest(string host, string localAddress, bool expected)
+        => Assert.Equal(expected, WebServerService.IsRequestHostAllowed(host, IPAddress.Parse(localAddress)));
+
+    [Theory]
+    [InlineData("http://192.168.1.20:6769", "http", "192.168.1.20:6769", true)]
+    [InlineData("http://127.0.0.1:6769", "http", "127.0.0.1:6769", true)]
+    [InlineData("https://192.168.1.20:6769", "http", "192.168.1.20:6769", false)]
+    [InlineData("http://attacker.example:6769", "http", "192.168.1.20:6769", false)]
+    [InlineData("http://192.168.1.20:6669", "http", "192.168.1.20:6769", false)]
+    public void BrowserOriginMustMatchTheRequestedHostAndPort(string origin, string scheme, string host, bool expected)
+        => Assert.Equal(expected, WebServerService.IsSameOrigin(origin, scheme, host));
+
+    [Fact]
+    public void NonBrowserClientsMayOmitOrigin()
+        => Assert.True(WebServerService.IsSameOrigin(null, "http", "127.0.0.1:6769"));
+
     [Fact]
     public void PublicSettingsExposePairingStateButNeverTheSecret()
     {

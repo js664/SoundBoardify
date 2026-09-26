@@ -1,4 +1,5 @@
 using NAudio.Wave;
+using Serilog;
 using System.IO;
 using System.Text.RegularExpressions;
 
@@ -33,7 +34,7 @@ public sealed class SoundLibrary(Storage storage)
             }, ct);
             var name = Regex.Replace(Path.GetFileNameWithoutExtension(filename), @"[\p{C}]", "").Trim();
             var sound = new Sound { Id = id, Name = string.IsNullOrWhiteSpace(name) ? "Sound" : name[..Math.Min(name.Length, 100)], SourceFilename = Path.GetFileName(filename), StoredFilename = id + ".wav", SourceDurationSeconds = duration };
-            lock (_gate) { sound.SortOrder = _sounds.Count; _sounds.Add(sound); storage.Save(sound); }
+            lock (_gate) { sound.SortOrder = _sounds.Count; storage.Save(sound); _sounds.Add(sound); }
             Changed?.Invoke("sound-added", sound);
             return Clone(sound);
         }
@@ -79,19 +80,29 @@ public sealed class SoundLibrary(Storage storage)
         List<Sound> removed;
         lock (_gate)
         {
-            if (ids.Distinct().Count() != ids.Count || ids.Any(id => _sounds.All(sound => sound.Id != id))) throw new KeyNotFoundException("One or more sounds were not found.");
-            removed = _sounds.Where(sound => ids.Contains(sound.Id)).ToList();
-            foreach (var sound in removed) { _sounds.Remove(sound); storage.Delete(sound.Id); }
-            for (var i = 0; i < _sounds.Count; i++) { _sounds[i].SortOrder = i; storage.Save(_sounds[i]); }
+            var idSet = ids.ToHashSet();
+            var existingIds = _sounds.Select(sound => sound.Id).ToHashSet();
+            if (idSet.Count != ids.Count || idSet.Any(id => !existingIds.Contains(id))) throw new KeyNotFoundException("One or more sounds were not found.");
+            removed = _sounds.Where(sound => idSet.Contains(sound.Id)).ToList();
+            var remaining = _sounds.Where(sound => !idSet.Contains(sound.Id)).Select(Clone).ToList();
+            for (var i = 0; i < remaining.Count; i++) remaining[i].SortOrder = i;
+            storage.DeleteSoundsAndSaveOrder(ids, remaining);
+            _sounds.Clear(); _sounds.AddRange(remaining);
         }
         foreach (var sound in removed)
         {
-            File.Delete(Path.Combine(storage.SoundsPath, sound.Id + Path.GetExtension(sound.SourceFilename).ToLowerInvariant()));
-            File.Delete(Path.Combine(storage.CachePath, sound.StoredFilename));
-            if (sound.ImageFilename is not null) File.Delete(Path.Combine(storage.ImagesPath, sound.ImageFilename));
+            TryDeleteAsset(Path.Combine(storage.SoundsPath, sound.Id + Path.GetExtension(sound.SourceFilename).ToLowerInvariant()));
+            TryDeleteAsset(Path.Combine(storage.CachePath, sound.StoredFilename));
+            if (sound.ImageFilename is not null) TryDeleteAsset(Path.Combine(storage.ImagesPath, sound.ImageFilename));
         }
         if (removed.Count == 1) Changed?.Invoke("sound-deleted", new { id = removed[0].Id });
         else Changed?.Invoke("sounds-deleted", new { ids = removed.Select(sound => sound.Id).ToArray() });
+    }
+    private static void TryDeleteAsset(string path)
+    {
+        try { File.Delete(path); }
+        catch (IOException ex) { Log.Warning(ex, "Could not remove sound asset {AssetPath}", path); }
+        catch (UnauthorizedAccessException ex) { Log.Warning(ex, "Could not remove sound asset {AssetPath}", path); }
     }
     public void Reorder(IReadOnlyList<Guid> ids)
     {

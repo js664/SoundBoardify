@@ -127,6 +127,38 @@ public sealed class Storage
     {
         using var db = Connect(); using var cmd = db.CreateCommand(); cmd.CommandText = "DELETE FROM sounds WHERE id=$id"; cmd.Parameters.AddWithValue("$id", id.ToString()); cmd.ExecuteNonQuery();
     }
+    public void DeleteSoundsAndSaveOrder(IReadOnlyCollection<Guid> ids, IReadOnlyList<Sound> remaining)
+    {
+        using var db = Connect();
+        using var transaction = db.BeginTransaction();
+        using (var delete = db.CreateCommand())
+        {
+            delete.Transaction = transaction;
+            delete.CommandText = "DELETE FROM sounds WHERE id=$id";
+            var idParameter = delete.Parameters.Add("$id", SqliteType.Text);
+            foreach (var id in ids)
+            {
+                idParameter.Value = id.ToString();
+                delete.ExecuteNonQuery();
+            }
+        }
+        using (var save = db.CreateCommand())
+        {
+            save.Transaction = transaction;
+            save.CommandText = "INSERT INTO sounds(id,sort_order,json) VALUES($id,$order,$json) ON CONFLICT(id) DO UPDATE SET sort_order=$order,json=$json";
+            var idParameter = save.Parameters.Add("$id", SqliteType.Text);
+            var orderParameter = save.Parameters.Add("$order", SqliteType.Integer);
+            var jsonParameter = save.Parameters.Add("$json", SqliteType.Text);
+            foreach (var sound in remaining)
+            {
+                idParameter.Value = sound.Id.ToString();
+                orderParameter.Value = sound.SortOrder;
+                jsonParameter.Value = JsonSerializer.Serialize(sound);
+                save.ExecuteNonQuery();
+            }
+        }
+        transaction.Commit();
+    }
     public AppSettings LoadSettings()
     {
         using var db = Connect(); using var cmd = db.CreateCommand(); cmd.CommandText = "SELECT json FROM settings WHERE key='app'";

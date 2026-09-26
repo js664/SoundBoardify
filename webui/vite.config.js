@@ -6,7 +6,7 @@ export default defineConfig({
   publicDir: 'public',
   server: {
     proxy: {
-      '/api': { target: 'http://127.0.0.1:6769', changeOrigin: true },
+      '/api': { target: 'http://127.0.0.1:6769' },
       '/ws': { target: 'ws://127.0.0.1:6769', ws: true },
     },
   },

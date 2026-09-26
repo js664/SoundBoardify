@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Net;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
@@ -100,6 +101,11 @@ public sealed class WebServerService(AppCoordinator coordinator, WebSocketHub hu
         var app = builder.Build();
         app.Use(async (context, next) =>
         {
+            // The service listens on all interfaces, so reject DNS-rebinding hosts and
+            // cross-origin browser requests before they can reach the control API.
+            if (!IsRequestHostAllowed(context.Request.Host.Host, context.Connection.LocalIpAddress) ||
+                !IsSameOrigin(context.Request.Headers["Origin"], context.Request.Scheme, context.Request.Host.Value ?? string.Empty))
+            { context.Response.StatusCode = StatusCodes.Status403Forbidden; return; }
             var ip = AppCoordinator.NormalizeNetworkAddress(context.Connection.RemoteIpAddress);
             var settings = coordinator.Settings;
             if (!AppCoordinator.CanAccessFromNetwork(ip, settings.LanAccess, settings.TailscaleAccess)) { context.Response.StatusCode = 403; return; }
@@ -280,6 +286,24 @@ public sealed class WebServerService(AppCoordinator coordinator, WebSocketHub hu
         remote = AppCoordinator.NormalizeNetworkAddress(remote);
         if (remote is null || System.Net.IPAddress.IsLoopback(remote) || string.IsNullOrEmpty(token)) return true;
         return string.Equals(headerToken, token, StringComparison.Ordinal) || string.Equals(queryToken, token, StringComparison.Ordinal);
+    }
+    internal static bool IsRequestHostAllowed(string host, IPAddress? localAddress)
+    {
+        if (localAddress is null) return false;
+        localAddress = AppCoordinator.NormalizeNetworkAddress(localAddress);
+        if (string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase) || host.EndsWith(".localhost", StringComparison.OrdinalIgnoreCase))
+            return localAddress is not null && IPAddress.IsLoopback(localAddress);
+        return IPAddress.TryParse(host, out var requestedAddress) &&
+            AppCoordinator.NormalizeNetworkAddress(requestedAddress)?.Equals(localAddress) == true;
+    }
+    internal static bool IsSameOrigin(string? origin, string scheme, string requestHost)
+    {
+        if (string.IsNullOrWhiteSpace(origin)) return true;
+        if (!Uri.TryCreate(origin, UriKind.Absolute, out var originUri) ||
+            !Uri.TryCreate($"{scheme}://{requestHost}", UriKind.Absolute, out var requestUri)) return false;
+        return originUri.UserInfo.Length == 0 && originUri.Scheme.Equals(requestUri.Scheme, StringComparison.OrdinalIgnoreCase) &&
+            originUri.Authority.Equals(requestUri.Authority, StringComparison.OrdinalIgnoreCase) &&
+            originUri.AbsolutePath == "/" && originUri.Query.Length == 0 && originUri.Fragment.Length == 0;
     }
     private static bool IsAddressInUse(Exception exception)
     {
