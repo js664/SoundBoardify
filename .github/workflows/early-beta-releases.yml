@@ -32,10 +32,15 @@ jobs:
             title="${title:-SimplySound $RELEASE_TAG} (Early Beta)"
           fi
           if [[ "$body" != *"$marker"* ]]; then
-            body="$marker
+            if [[ "$body" == *"**Early Beta:**"* ]]; then
+              body="$marker
+          $body"
+            else
+              body="$marker
           > **Early Beta:** SimplySound is still in early beta and may contain bugs or unfinished features. Back up your sound library before updating.
 
           $body"
+            fi
           fi
 
           gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --title "$title" --notes "$body" --prerelease
