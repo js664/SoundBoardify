@@ -7,7 +7,7 @@ const net = require('node:net');
 const { isNewerVersion, isSimplySoundReleaseAssetUrl, isSimplySoundReleaseUrl, selectNewestRelease } = require('./version-utils.cjs');
 const { createMarketplaceBridge } = require('./marketplace-bridge.cjs');
 const { buildFirewallCommand } = require('./firewall-command.cjs');
-const { openSoundboardInBrowser } = require('./soundboard-link.cjs');
+const { isSoundboardWindowOpenRequest, openSoundboardInBrowser } = require('./soundboard-link.cjs');
 
 app.setName('SimplySound');
 app.setAppUserModelId('com.simplysound.desktop');
@@ -171,7 +171,16 @@ async function createWindow(port) {
   });
   mainWindow.once('ready-to-show', () => mainWindow.show());
   mainWindow.on('closed', () => { mainWindow = null; });
-  mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (isSoundboardWindowOpenRequest(url, activePort)) {
+      void openSoundboardInBrowser({ sender: mainWindow.webContents, mainWindowWebContents: mainWindow.webContents, port: activePort, openExternal: target => shell.openExternal(target) })
+        .catch(error => {
+          console.error('Could not open the soundboard in the default browser:', error);
+          if (!mainWindow?.isDestroyed()) mainWindow.webContents.send('SimplySound:soundboard-launch-error', error.message || 'Could not open the soundboard in your default browser.');
+        });
+    }
+    return { action: 'deny' };
+  });
   mainWindow.webContents.on('will-navigate', (event, url) => {
     try { if (new URL(url).origin !== appOrigin) event.preventDefault(); }
     catch { event.preventDefault(); }

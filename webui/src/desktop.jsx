@@ -57,7 +57,6 @@ export default function DesktopApp() {
   const [qrVersion, setQrVersion] = useState(0);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState('');
-  const [openingSoundboard, setOpeningSoundboard] = useState(false);
   const [appVersion, setAppVersion] = useState(null);
   const [updateState, setUpdateState] = useState('checking');
   const [latestVersion, setLatestVersion] = useState(null);
@@ -84,18 +83,6 @@ export default function DesktopApp() {
   async function refresh() {
     const [nextSettings, endpoints, state] = await Promise.all([request('/api/settings'), request('/api/audio/devices'), request('/api/status')]);
     setSettings(nextSettings); setPortDraft(String(nextSettings.port)); setDevices(endpoints || []); setStatus(state);
-  }
-  async function openSoundboard() {
-    const bridge = window.SimplySoundDesktop;
-    if (openingSoundboard) return;
-    if (!bridge?.openSoundboard) { setToast('Update SimplySound to open the soundboard from this window.'); return; }
-    setOpeningSoundboard(true);
-    try {
-      await bridge.openSoundboard();
-      setToast('Soundboard opened in your browser.');
-    } catch (error) {
-      setToast(error.message || 'Could not open the soundboard. Check your default browser and try again.');
-    } finally { setOpeningSoundboard(false); }
   }
   const checkForUpdates = useCallback(async () => {
     const bridge = window.SimplySoundDesktop;
@@ -156,6 +143,7 @@ export default function DesktopApp() {
   }, []);
   useEffect(() => () => { clearTimeout(masterTimer.current); clearTimeout(micGainTimer.current); }, []);
   useEffect(() => { if (!toast) return; const timer = setTimeout(() => setToast(''), 3500); return () => clearTimeout(timer); }, [toast]);
+  useEffect(() => window.SimplySoundDesktop?.onSoundboardLaunchError?.(message => setToast(message)), []);
 
   async function patchSettings(patch) {
     try {
@@ -319,7 +307,7 @@ export default function DesktopApp() {
           </div>
           {sectionCopy[1] && <p>{sectionCopy[1]}</p>}
         </div>
-        {activeSection === 'overview' && <button type="button" className="open-soundboard" onClick={openSoundboard} disabled={openingSoundboard} aria-label="Open soundboard in your browser"><span>{openingSoundboard ? 'Opening…' : 'Open soundboard'}</span><Icon name="arrow" size={14}/></button>}
+        {activeSection === 'overview' && <a className="open-soundboard" href={`http://127.0.0.1:${port}/`} target="_blank" rel="noreferrer" aria-label="Open soundboard in your browser" aria-disabled={!serverReady} onClick={event => { if (!serverReady) { event.preventDefault(); setToast('The soundboard is still starting. Try again in a moment.'); } }}><span>Open soundboard</span><Icon name="arrow" size={14}/></a>}
       </div>
       {!settings ? <div className="desktop-loading">Connecting to SimplySound…</div> : <>
         {activeSection === 'overview' && <>
