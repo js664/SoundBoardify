@@ -15,11 +15,14 @@ function Icon({ name, size = 18 }) {
     check: <path d="m5 12 4 4L19 6"/>,
     refresh: <><path d="M20 7v5h-5M4 17v-5h5"/><path d="M5.6 9A7 7 0 0 1 18 6l2 2M4 16l2 2a7 7 0 0 0 12.4-3"/></>,
     lock: <><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></>,
+    phone: <><rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M10 18.5h4"/></>,
+    settings: <><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="3" fill="currentColor" stroke="none"/><circle cx="15" cy="17" r="3" fill="currentColor" stroke="none"/></>,
+    chevron: <path d="m9 18 6-6-6-6"/>,
     arrow: <><path d="M7 17 17 7M7 7h10v10"/></>,
   };
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
 }
-function Switch({ checked, onChange, label }) { return <button type="button" role="switch" aria-checked={checked} aria-label={label} className={`desktop-switch ${checked ? 'on' : ''}`} onClick={() => onChange(!checked)}><i/></button>; }
+function Switch({ checked, onChange, label, disabled = false }) { return <button type="button" role="switch" aria-checked={checked} aria-label={label} aria-disabled={disabled} disabled={disabled} className={`desktop-switch ${checked ? 'on' : ''}`} onClick={() => onChange(!checked)}><i/></button>; }
 function DevicePicker({ id, label, detail, value, currentName, devices, onChange }) {
   const [open, setOpen] = useState(false);
   const selected = devices.find(device => device.id === value);
@@ -35,7 +38,7 @@ function DevicePicker({ id, label, detail, value, currentName, devices, onChange
   return <div className={`desktop-device ${open ? 'is-open' : ''}`} data-picker={id}>
     <div className="desktop-device-copy"><strong>{label}</strong><small>{detail}</small></div>
     <button type="button" className="device-picker-trigger" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(value => !value)}>
-      <span className={`device-led ${selected?.state === 'Active' || !value ? 'ready' : ''}`}/><span className="device-picker-value"><strong>{selected?.name || (value ? 'Selected device unavailable' : currentName || 'Windows default')}</strong><small>{selected ? `${selected.sampleRate ? `${Math.round(selected.sampleRate / 1000)} kHz · ` : ''}${selected.state}` : 'Follow Windows default'}</small></span><span className="device-chevron">⌄</span>
+      <span className={`device-led ${selected?.state === 'Active' || !value ? 'ready' : ''}`}/><span className="device-picker-value"><strong>{selected?.name || (value ? 'Selected device unavailable' : currentName || 'Windows default')}</strong><small>{selected ? `${selected.sampleRate ? `${Math.round(selected.sampleRate / 1000)} kHz · ` : ''}${selected.state}` : 'Follow Windows default'}</small></span><span className="device-chevron"><Icon name="chevron" size={16}/></span>
     </button>
     {open && <div className="device-picker-menu" role="listbox">
       <button type="button" role="option" aria-selected={!value} onClick={() => choose(null)}><span><strong>Windows default</strong><small>{currentName || 'Follow your system playback device'}</small></span>{!value && <Icon name="check" size={15}/>}</button>
@@ -65,7 +68,16 @@ export default function DesktopApp() {
   const [hotkeyStatus, setHotkeyStatus] = useState({ active: 0, unavailable: [] });
   const [checkingUpdates, setCheckingUpdates] = useState(false);
   const [activeSection, setActiveSection] = useState('overview');
+  const [connectionChoice, setConnectionChoice] = useState('wifi');
+  const [setupOpen, setSetupOpen] = useState(false);
+  const [setupStep, setSetupStep] = useState(0);
+  const [setupFirewallState, setSetupFirewallState] = useState('idle');
+  const [setupError, setSetupError] = useState('');
+  const [showManualCommand, setShowManualCommand] = useState(false);
+  const [manualCommand, setManualCommand] = useState('');
+  const [manualCopied, setManualCopied] = useState(false);
   const masterTimer = useRef(null);
+  const welcomeDialogRef = useRef(null);
 
   async function refresh() {
     const [nextSettings, endpoints, state] = await Promise.all([request('/api/settings'), request('/api/audio/devices'), request('/api/status')]);
@@ -97,6 +109,31 @@ export default function DesktopApp() {
     const timer = setInterval(() => request('/api/status').then(setStatus).catch(() => {}), 3500);
     return () => clearInterval(timer);
   }, [checkForUpdates]);
+  useEffect(() => {
+    const bridge = window.SimplySoundDesktop;
+    if (!bridge?.isSetupComplete) return;
+    let active = true;
+    bridge.isSetupComplete().then(complete => { if (active && !complete) setSetupOpen(true); }).catch(() => {});
+    return () => { active = false; };
+  }, []);
+  useEffect(() => {
+    if (!setupOpen) return;
+    const dialog = welcomeDialogRef.current;
+    if (!dialog) return;
+    const focusable = () => [...dialog.querySelectorAll('button:not(:disabled), textarea:not(:disabled)')];
+    const first = dialog.querySelector('.welcome-next') || focusable()[0];
+    first?.focus({ preventScroll: true });
+    const trapFocus = event => {
+      if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); return; }
+      if (event.key !== 'Tab') return;
+      const items = focusable();
+      if (!items.length) { event.preventDefault(); return; }
+      if (event.shiftKey && document.activeElement === items[0]) { event.preventDefault(); items.at(-1).focus(); }
+      else if (!event.shiftKey && document.activeElement === items.at(-1)) { event.preventDefault(); items[0].focus(); }
+    };
+    document.addEventListener('keydown', trapFocus, true);
+    return () => document.removeEventListener('keydown', trapFocus, true);
+  }, [setupOpen, setupStep]);
   useEffect(() => {
     const refreshHotkeys = () => window.SimplySoundDesktop?.getHotkeyStatus?.().then(setHotkeyStatus).catch(() => {});
     refreshHotkeys();
@@ -153,18 +190,58 @@ export default function DesktopApp() {
       await patchSettings(patch); setPairDraft(''); setQrVersion(version => version + 1); setToast(action === 'disable' ? 'Pairing protection disabled' : 'Pairing link updated — scan the new QR code');
     } catch {} finally { setBusy(false); }
   }
-  async function configureFirewall() {
+  async function configureFirewall(access = settings) {
     if (!window.SimplySoundDesktop?.configureFirewall) {
       setToast('Open this in the SimplySound desktop app to update Windows Firewall.');
-      return;
+      return false;
+    }
+    if (!access?.lanAccess && !access?.tailscaleAccess) {
+      const message = 'Enable Wi-Fi/LAN or Tailscale access before creating a firewall rule.';
+      if (setupOpen) setSetupError(message); else setToast(message);
+      return false;
     }
     setBusy(true);
+    setSetupError('');
     try {
-      await window.SimplySoundDesktop.configureFirewall({ tailscaleAccess: settings.tailscaleAccess });
-      setToast('Windows Firewall now allows SimplySound on this network.');
+      await window.SimplySoundDesktop.configureFirewall({ lanAccess: access.lanAccess, tailscaleAccess: access.tailscaleAccess });
+      setSetupFirewallState('allowed');
+      if (setupOpen) setSetupError(''); else setToast('Windows Firewall now allows SimplySound on this network.');
+      return true;
     } catch (error) {
-      setToast(error.message || 'Windows Firewall permission was not granted.');
+      const message = error.message || 'Windows Firewall permission was not granted.';
+      setSetupFirewallState('denied');
+      if (setupOpen) setSetupError(`${message} You can copy the command below and run it yourself in an Administrator PowerShell window.`);
+      else setToast(message);
+      return false;
     } finally { setBusy(false); }
+  }
+  async function updateSetupAccess(patch) {
+    setBusy(true); setSetupError('');
+    try {
+      await patchSettings(patch);
+      setSetupFirewallState('idle'); setManualCommand('');
+    } catch (error) { setSetupError(error.message || 'Could not save network access settings.'); }
+    finally { setBusy(false); }
+  }
+  async function loadManualCommand() {
+    setShowManualCommand(true); setSetupError(''); setManualCopied(false);
+    try {
+      const command = await window.SimplySoundDesktop?.getFirewallCommand?.({ lanAccess: settings.lanAccess, tailscaleAccess: settings.tailscaleAccess });
+      if (!command) throw new Error('The PowerShell command is not available yet. Restart SimplySound and try again.');
+      setManualCommand(command);
+    } catch (error) { setSetupError(error.message || 'Could not prepare the firewall command.'); }
+  }
+  async function copyManualCommand() {
+    if (!manualCommand) return;
+    try { await navigator.clipboard.writeText(manualCommand); setManualCopied(true); setSetupError(''); }
+    catch { setSetupError('Copy was blocked. Select the command text, then press Ctrl+C.'); }
+  }
+  async function completeSetup() {
+    try { await window.SimplySoundDesktop?.completeSetup?.(); setSetupOpen(false); setSetupError(''); }
+    catch (error) { setSetupError(error.message || 'Could not save setup progress.'); }
+  }
+  function openSetup() {
+    setSetupStep(0); setSetupOpen(true); setSetupError(''); setShowManualCommand(false); setManualCommand('');
   }
   async function openRelease() {
     try { await window.SimplySoundDesktop?.openRelease(releaseUrl); }
@@ -175,7 +252,10 @@ export default function DesktopApp() {
   const wifiUrl = status?.wifiUrl || status?.url;
   const tailscaleUrl = status?.tailscaleUrl;
   const port = status?.activePort || settings?.port || 6769;
+  const serverReady = status?.server === 'running';
   const outputReady = status?.audio?.startsWith('Connected');
+  const selectedConnection = connectionChoice === 'tailscale' && tailscaleUrl ? 'tailscale' : 'wifi';
+  const selectedPhoneUrl = selectedConnection === 'tailscale' ? tailscaleUrl : wifiUrl;
   const updateMessage = {
     checking: 'Checking GitHub…',
     available: `v${latestVersion} is available`,
@@ -185,57 +265,56 @@ export default function DesktopApp() {
     unavailable: 'Desktop version unavailable',
   }[updateState] || 'Check for updates';
   const navigation = [
-    { id: 'overview', label: 'Overview', icon: 'home' },
+    { id: 'overview', label: 'General', icon: 'settings' },
     { id: 'audio', label: 'Audio', icon: 'volume' },
-    { id: 'network', label: 'Phone access', icon: 'lock' },
+    { id: 'network', label: 'Phone access', icon: 'phone' },
     { id: 'updates', label: 'Updates', icon: 'refresh' },
   ];
   const sectionCopy = {
-    overview: ['Your soundboard at a glance', 'Open the phone controller or check that audio is ready.'],
-    audio: ['Audio setup', 'Choose where sound effects play and tune local monitoring.'],
-    network: ['Phone access', 'Choose which private networks can reach your controller.'],
-    updates: ['Updates & about', 'Review new versions before choosing when to install them.'],
+    overview: ['General', 'Your soundboard, at a glance.'],
+    audio: ['Audio', 'Choose where your sounds play.'],
+    network: ['Phone access', 'Choose how your phone connects to this PC.'],
+    updates: ['Updates', 'Check your version and review new releases.'],
   }[activeSection];
   return <main className={appClass}>
+    <div className="desktop-window-strip" aria-hidden="true"/>
     <aside className="studio-sidebar" aria-label="Main navigation">
-      <div className="desktop-brand"><span className="desktop-mark"><img src={ART} alt=""/></span><span><strong>SimplySound</strong><small>DESKTOP</small></span></div>
-      <div className="sidebar-caption">WORKSPACE</div>
+      <div className="desktop-brand"><img src={ART} alt=""/><div><strong>SimplySound</strong><span>Soundboard settings</span></div></div>
       <nav className="studio-navigation" aria-label="Settings sections">
-        {navigation.map(item => <button key={item.id} type="button" className={`studio-nav-item ${activeSection === item.id ? 'active' : ''}`} aria-current={activeSection === item.id ? 'page' : undefined} onClick={() => setActiveSection(item.id)}><Icon name={item.icon} size={18}/><span>{item.label}</span>{item.id === 'updates' && updateState === 'available' && <i className="nav-update-dot"/>}</button>)}
+        {navigation.map(item => <button key={item.id} type="button" className={`studio-nav-item ${activeSection === item.id ? 'active' : ''}`} aria-current={activeSection === item.id ? 'page' : undefined} onClick={() => setActiveSection(item.id)}><span className={`nav-symbol nav-symbol-${item.id}`}><Icon name={item.icon} size={16}/></span><span>{item.label}</span>{item.id === 'updates' && updateState === 'available' && <i className="nav-update-dot"/>}</button>)}
       </nav>
       <div className="sidebar-spacer"/>
-      <div className="sidebar-health"><i className={outputReady ? 'connected' : ''}/><span><strong>{outputReady ? 'Audio ready' : 'Starting audio'}</strong><small>{outputReady ? (status?.endpoint || 'Sound output connected') : 'Checking your device'}</small></span></div>
-      <div className="sidebar-version">EARLY BETA <span>{appVersion ? `v${appVersion}` : ''}</span></div>
+      <button className="sidebar-setup" onClick={openSetup}><Icon name="phone" size={16}/><span>Setup guide</span><Icon name="chevron" size={13}/></button>
+      <div className="sidebar-health"><i className={serverReady ? 'connected' : ''}/><span><strong>{serverReady ? 'Soundboard online' : 'Starting soundboard'}</strong><small>{outputReady ? 'Ready to play' : 'Waiting for audio'}</small></span></div>
+      <div className="sidebar-version"><span>Early Beta</span><strong>{appVersion ? `v${appVersion}` : ''}</strong></div>
     </aside>
     <div className="studio-main">
-      <header className="desktop-topbar">
-        <div className="breadcrumb"><span>SimplySound</span><b>/</b><strong>{navigation.find(item => item.id === activeSection)?.label}</strong></div>
-        <div className="desktop-live"><i className={outputReady ? 'connected' : ''}/>{outputReady ? 'System ready' : 'Starting up'}</div>
-      </header>
-      <section className="control-layout">
-      <div className="control-heading"><div><h1>{sectionCopy[0]}</h1><p>{sectionCopy[1]}</p></div></div>
+      <section className="control-layout" key={activeSection}>
+      <div className={`control-heading ${activeSection === 'overview' ? 'is-overview' : ''}`}><div><h1>{sectionCopy[0]}</h1>{sectionCopy[1] && <p>{sectionCopy[1]}</p>}</div>{activeSection === 'overview' && <button type="button" className="open-soundboard" onClick={async () => { try { await window.SimplySoundDesktop?.openSoundboard(); } catch (error) { setToast(error.message || 'Could not open the soundboard.'); } }}><span>Open soundboard</span><Icon name="arrow" size={14}/></button>}</div>
       {!settings ? <div className="desktop-loading">Connecting to SimplySound…</div> : <>
         {activeSection === 'overview' && <>
         <section className="connect-panel">
+          <div className="qr-frame">{wifiUrl && !wifiUrl.includes('127.0.0.1') ? <img src={`/api/phone/qr?v=${qrVersion}`} alt="Scan with your phone for Wi-Fi/LAN access"/> : <div className="qr-unavailable"><Icon name="phone" size={28}/><span>{settings.lanAccess ? 'Waiting for Wi-Fi' : 'Wi-Fi access is off'}</span></div>}<span>Scan on your Wi-Fi</span></div>
           <div className="connect-main">
-            <div className="connect-title"><span className="connect-glyph"><Icon name="arrow" size={17}/></span><div><h2>Open your soundboard</h2><p>Scan to open the mobile controller.</p></div></div>
-            <div className="connection-addresses">
-              <div className="address-row"><span className="address-label">Wi-Fi</span><div className="address-actions"><a className="address-link" href={wifiUrl || undefined} target="_blank" rel="noreferrer" title="Open Wi-Fi soundboard">{wifiUrl || (settings?.lanAccess ? 'Waiting for network…' : 'Access is off')}<Icon name="arrow" size={14}/></a><button className="url-copy" onClick={() => copy(wifiUrl, 'Wi-Fi')} disabled={!wifiUrl} aria-label="Copy Wi-Fi soundboard link"><Icon name="copy" size={14}/></button></div></div>
-              {tailscaleUrl && <div className="address-row"><span className="address-label">Tailscale</span><div className="address-actions"><a className="address-link" href={tailscaleUrl} target="_blank" rel="noreferrer" title="Open Tailscale soundboard">{tailscaleUrl}<Icon name="arrow" size={14}/></a><button className="url-copy" onClick={() => copy(tailscaleUrl, 'Tailscale')} aria-label="Copy Tailscale soundboard link"><Icon name="copy" size={14}/></button></div></div>}
-              <div className="address-row port-row"><span className="address-label">Web UI port</span>{editingPort ? <div className="port-edit"><input autoFocus type="number" min="1024" max="65535" value={portDraft} onChange={event => setPortDraft(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') applyPort(); if (event.key === 'Escape') setEditingPort(false); }}/><button disabled={busy} onClick={applyPort}>{busy ? 'Saving…' : 'Apply'}</button></div> : <button className="port-value" onClick={() => { setPortDraft(String(settings.port)); setEditingPort(true); }} aria-label={`Change web UI port, currently ${port}`}><strong>{port}</strong><span>Edit</span></button>}</div>
-            </div>
+            <div className="connect-title"><h2>Your phone. Your remote.</h2><p>Scan the code to play sounds from your phone.</p></div>
+            <div className={`connection-segment ${selectedConnection === 'tailscale' ? 'is-tailscale' : ''}`} aria-label="Phone link network"><span className="segment-selection"/><button type="button" aria-pressed={selectedConnection === 'wifi'} onClick={() => setConnectionChoice('wifi')}>Wi-Fi</button><button type="button" aria-pressed={selectedConnection === 'tailscale'} disabled={!tailscaleUrl} onClick={() => setConnectionChoice('tailscale')}>Tailscale</button></div>
+            <div className="phone-link-field"><a href={selectedPhoneUrl || undefined} target="_blank" rel="noreferrer" title="Open phone soundboard">{selectedPhoneUrl || (settings.lanAccess ? 'Waiting for a network…' : 'Enable Wi-Fi in Phone access')}</a><button onClick={() => copy(selectedPhoneUrl, selectedConnection === 'wifi' ? 'Wi-Fi' : 'Tailscale')} disabled={!selectedPhoneUrl} aria-label="Copy phone link" title="Copy link"><Icon name="copy" size={15}/></button></div>
           </div>
-          <div className="qr-frame">{wifiUrl && !wifiUrl.includes('127.0.0.1') ? <img src={`/api/phone/qr?v=${qrVersion}`} alt="Wi-Fi/LAN QR code for the soundboard"/> : <div className="qr-unavailable"><span className="qr-unavailable-mark"><Icon name="arrow" size={19}/></span><span>{settings?.lanAccess ? 'Connect this PC to Wi-Fi to show a phone QR.' : 'Turn on Wi-Fi / LAN access to show the QR.'}</span></div>}<span>WI-FI / LAN QR</span></div>
         </section>
-        <div className="overview-summary" aria-label="System summary">
-          <div><span className="summary-label">Sound effects output</span><strong>{status?.endpoint || 'Windows default'}</strong><small>Default playback route</small></div>
-          <div><span className="summary-label">Phone controller</span><strong>{settings.lanAccess || settings.tailscaleAccess ? 'Ready to connect' : 'Access is off'}</strong><small>{[settings.lanAccess && 'Wi-Fi', settings.tailscaleAccess && 'Tailscale'].filter(Boolean).join(' · ') || 'Enable access in Phone access'}</small></div>
-          <button type="button" onClick={() => setActiveSection('audio')}><span className="summary-label">Quick audio check</span><strong>Open audio setup <Icon name="arrow" size={15}/></strong><small>Devices and local monitoring</small></button>
+        <h2 className="group-label">Playback</h2>
+        <div className="overview-summary" aria-label="Playback settings">
+          <button type="button" className="summary-row" onClick={() => setActiveSection('audio')}><span className="summary-label"><Icon name="volume" size={17}/><span>Sound output</span></span><strong>{status?.endpoint || 'Windows default'}<Icon name="chevron" size={14}/></strong></button>
+          <button type="button" className="summary-row" onClick={() => setActiveSection('audio')}><span className="summary-label"><Icon name="volume" size={17}/><span>Local monitoring</span></span><strong>{settings.monitorLocally ? status?.monitorEndpoint || 'Windows default' : 'Off'}<Icon name="chevron" size={14}/></strong></button>
+        </div>
+        <h2 className="group-label">Connection</h2>
+        <div className="overview-summary" aria-label="Connection settings">
+          <div className="summary-row port-row"><span>Web UI port</span>{editingPort ? <div className="port-edit"><input autoFocus type="number" min="1024" max="65535" value={portDraft} onChange={event => setPortDraft(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') applyPort(); if (event.key === 'Escape') setEditingPort(false); }}/><button disabled={busy} onClick={applyPort}>{busy ? 'Saving…' : 'Apply'}</button></div> : <button className="port-value" onClick={() => { setPortDraft(String(settings.port)); setEditingPort(true); }} aria-label={`Change web UI port, currently ${port}`}><strong>{port}</strong><span>Edit</span></button>}</div>
+          <button type="button" className="summary-row" onClick={() => setActiveSection('network')}><span>Network & privacy</span><strong>{settings.pairingEnabled ? 'Pairing enabled' : 'Manage access'}<Icon name="chevron" size={14}/></strong></button>
         </div>
         </>}
         {activeSection === 'audio' && <div className="settings-columns single-column">
           <section className="settings-section audio-section">
-            <div className="section-heading"><span className="section-icon"><Icon name="volume"/></span><div><h2>Audio</h2><p>Choose where your sounds play.</p></div></div>
+            <div className="section-heading"><h2>Output & monitoring</h2></div>
             <DevicePicker id="playback" label="Soundboard output" detail="Defaults to the Windows playback device." value={settings.endpointId || null} currentName={status?.endpoint} devices={devices} onChange={selectDevice}/>
             <div className="setting-divider"/>
             <div className="setting-inline"><div><strong>Hear sounds on this PC</strong><small>Play a local copy while sending audio to your output.</small></div><Switch label="Hear sounds on this PC" checked={settings.monitorLocally} onChange={monitorLocally => patchSettings({ monitorLocally }).catch(() => {})}/></div>
@@ -251,7 +330,8 @@ export default function DesktopApp() {
         </div>}
         {activeSection === 'network' && <div className="settings-columns single-column">
           <section className="settings-section connection-section">
-            <div className="section-heading"><span className="section-icon"><Icon name="lock"/></span><div><h2>Phone access</h2><p>Control this board from your private network.</p></div></div>
+            <div className="section-heading"><h2>Network access</h2></div>
+            <button type="button" className="setup-guide-link" onClick={openSetup}><span><strong>Run the welcome setup again</strong><small>Review network choices and Windows Firewall access.</small></span><Icon name="arrow" size={15}/></button>
             <div className="setting-inline access-toggle"><div><strong>Allow Wi-Fi / LAN access</strong><small>Let devices on your local network control the board.</small></div><Switch label="Allow Wi-Fi and LAN access" checked={settings.lanAccess} onChange={lanAccess => patchSettings({ lanAccess }).catch(() => {})}/></div>
             <div className="setting-inline access-toggle"><div><strong>Allow Tailscale access</strong><small>Optional. Turn on when both devices use your Tailscale network.</small></div><Switch label="Allow Tailscale access" checked={settings.tailscaleAccess} onChange={tailscaleAccess => patchSettings({ tailscaleAccess }).catch(() => {})}/></div>
             <div className="pairing-setting">
@@ -268,7 +348,7 @@ export default function DesktopApp() {
               </ol>
               <p>No router port forwarding is needed. Pairing is an access gate, not encryption; use trusted Wi-Fi or Tailscale and never expose the port to the public internet.</p>
             </details>
-            <button type="button" className="firewall-action" onClick={configureFirewall} disabled={busy}><span>Allow app in Windows Firewall</span><Icon name="arrow" size={14}/></button>
+            <button type="button" className="firewall-action" onClick={() => configureFirewall(settings)} disabled={busy || (!settings.lanAccess && !settings.tailscaleAccess)}><span>Allow app in Windows Firewall</span><Icon name="arrow" size={14}/></button>
             <p className="firewall-note">Windows may ask for administrator approval. The rule is limited to this app and your local network{settings.tailscaleAccess ? ' and Tailscale' : ''}.</p>
           </section>
         </div>
@@ -293,5 +373,72 @@ export default function DesktopApp() {
     </section>
       {toast && <div role="status" className="desktop-toast">{toast}</div>}
     </div>
+    {setupOpen && settings && <div className="welcome-overlay" role="presentation">
+      <section ref={welcomeDialogRef} className="welcome-dialog" role="dialog" aria-modal="true" aria-labelledby="welcome-title" aria-describedby="welcome-description">
+        <header className="welcome-header">
+          <div className="welcome-brand"><img src={ART} alt=""/><span>SimplySound <small>QUICK SETUP</small></span></div>
+          <button type="button" className="welcome-later" onClick={completeSetup}>Set up later</button>
+        </header>
+        <div className="welcome-progress" aria-label={`Step ${setupStep + 1} of 4`}>
+          {['Welcome', 'Networks', 'Firewall', 'Ready'].map((label, index) => <div key={label} className={`welcome-progress-step ${index === setupStep ? 'current' : ''} ${index < setupStep ? 'done' : ''}`}><i>{index < setupStep ? <Icon name="check" size={13}/> : String(index + 1).padStart(2, '0')}</i><span>{label}</span></div>)}
+        </div>
+        <div className="welcome-content" key={setupStep}>
+          {setupStep === 0 && <div className="welcome-intro">
+            <span className="welcome-hero-mark"><img src={ART} alt=""/><i/><i/><i/></span>
+            <p className="welcome-eyebrow">YOUR SOUND. YOUR SPACE.</p>
+            <h1 id="welcome-title">Let’s get your board ready.</h1>
+            <p id="welcome-description" className="welcome-lead">A quick introduction to SimplySound: set up phone access, allow your chosen network through Windows Firewall, and you’re ready to play.</p>
+            <div className="welcome-feature-line"><span><Icon name="volume" size={16}/> Sounds play through your chosen output</span><span><Icon name="lock" size={16}/> Phone access stays on private networks</span></div>
+          </div>}
+          {setupStep === 1 && <div className="welcome-page">
+            <p className="welcome-eyebrow">STEP 02 · CONNECTIONS</p>
+            <h1 id="welcome-title">Choose how your phone connects.</h1>
+            <p id="welcome-description" className="welcome-lead">Wi-Fi works when your phone and PC share a network. Tailscale is optional for connecting from elsewhere.</p>
+            <div className="welcome-choice-list">
+              <div className="welcome-choice"><span className="welcome-choice-icon"><Icon name="arrow" size={17}/></span><span><strong>Wi-Fi / LAN</strong><small>Allow phones and computers on your local network.</small></span><Switch label="Allow Wi-Fi and LAN access" checked={settings.lanAccess} disabled={busy} onChange={lanAccess => updateSetupAccess({ lanAccess })}/></div>
+              <div className="welcome-choice"><span className="welcome-choice-icon tailscale"><Icon name="lock" size={17}/></span><span><strong>Tailscale <em>OPTIONAL</em></strong><small>Use your private Tailscale network when you’re away.</small></span><Switch label="Allow Tailscale access" checked={settings.tailscaleAccess} disabled={busy} onChange={tailscaleAccess => updateSetupAccess({ tailscaleAccess })}/></div>
+            </div>
+            {settings.tailscaleAccess && <div className="welcome-hint"><Icon name="check" size={15}/><span>Install and sign in to Tailscale on both this PC and your phone. We’ll add its network to the firewall in the next step.</span></div>}
+            {!settings.lanAccess && !settings.tailscaleAccess && <div className="welcome-hint needs-attention"><Icon name="lock" size={15}/><span>No phone network is enabled. Turn on Wi-Fi/LAN or Tailscale to use the phone controller.</span></div>}
+          </div>}
+          {setupStep === 2 && <div className="welcome-page">
+            <p className="welcome-eyebrow">STEP 03 · WINDOWS FIREWALL</p>
+            <h1 id="welcome-title">Let your phone reach the app.</h1>
+            <p id="welcome-description" className="welcome-lead">Windows blocks new incoming connections by default. Add a narrowly scoped rule for SimplySound’s current port and the networks you selected.</p>
+            <div className={`firewall-result ${setupFirewallState}`} aria-live="polite">
+              <span className="firewall-result-icon"><Icon name={setupFirewallState === 'allowed' ? 'check' : 'lock'} size={17}/></span>
+              <span><strong>{setupFirewallState === 'allowed' ? 'Firewall access is ready' : setupFirewallState === 'denied' ? 'Permission wasn’t granted' : 'One-time administrator approval'}</strong><small>TCP port {port} · {[settings.lanAccess && 'Wi-Fi / LAN', settings.tailscaleAccess && 'Tailscale'].filter(Boolean).join(' + ') || 'No networks selected'}</small></span>
+              {setupFirewallState === 'allowed' && <Icon name="check" size={17}/>}
+            </div>
+            <button type="button" className="welcome-firewall-button" onClick={() => configureFirewall(settings)} disabled={busy || (!settings.lanAccess && !settings.tailscaleAccess)}><span>{busy ? 'Waiting for Windows…' : setupFirewallState === 'allowed' ? 'Update firewall rule' : 'Allow SimplySound in Windows Firewall'}</span><Icon name="arrow" size={15}/></button>
+            <div className="manual-firewall">
+              <button type="button" className="manual-firewall-toggle" aria-expanded={showManualCommand} aria-controls="manual-command-panel" onClick={() => showManualCommand ? setShowManualCommand(false) : loadManualCommand()}><span><strong>Prefer to run it yourself?</strong><small>Copy the command and paste it into PowerShell opened as Administrator.</small></span><b>{showManualCommand ? '−' : '+'}</b></button>
+              {showManualCommand && <div className="manual-command-panel" id="manual-command-panel">
+                {manualCommand ? <textarea aria-label="PowerShell firewall command" readOnly value={manualCommand} onFocus={event => event.target.select()} onClick={event => event.currentTarget.select()}/> : <div className="manual-command-loading">Preparing a command for port {port}…</div>}
+                <button type="button" className="manual-copy-button" onClick={copyManualCommand} disabled={!manualCommand}>{manualCopied ? <><Icon name="check" size={14}/> Copied</> : <><Icon name="copy" size={14}/> Copy command</>}</button>
+                <p>Open <strong>Windows PowerShell</strong> with <strong>Run as administrator</strong>, paste the command, then press Enter. It only allows the networks selected above.</p>
+                {manualCopied && <button type="button" className="manual-confirm-button" onClick={() => { setSetupFirewallState('allowed'); setSetupError(''); }}>I ran the command</button>}
+              </div>}
+            </div>
+          </div>}
+          {setupStep === 3 && <div className="welcome-page welcome-ready">
+            <span className="welcome-ready-mark"><Icon name="check" size={30}/></span>
+            <p className="welcome-eyebrow">SETUP COMPLETE</p>
+            <h1 id="welcome-title">You’re ready to play.</h1>
+            <p id="welcome-description" className="welcome-lead">Your soundboard runs on this PC. Scan the QR code with your phone while both devices are on the same Wi-Fi.</p>
+            <div className="welcome-finish-card">
+              {settings.lanAccess && wifiUrl && !wifiUrl.includes('127.0.0.1') ? <img src={`/api/phone/qr?v=${qrVersion}`} alt="Wi-Fi QR code for the SimplySound phone controller"/> : <div className="welcome-qr-placeholder"><Icon name="arrow" size={20}/></div>}
+              <div><strong>Phone soundboard</strong><small>{settings.lanAccess ? wifiUrl || 'Connect this PC to Wi-Fi to get your link.' : 'Wi-Fi access is off.'}</small>{settings.tailscaleAccess && <small className="welcome-tail-link">Tailscale: {tailscaleUrl || 'Start Tailscale to see your phone link.'}</small>}</div>
+            </div>
+            {setupFirewallState !== 'allowed' && <div className="welcome-hint needs-attention"><Icon name="lock" size={15}/><span>Windows Firewall still needs approval for phone access. You can finish now and allow it later in Phone access settings.</span></div>}
+          </div>}
+        </div>
+        {setupError && <p className="welcome-error" role="alert">{setupError}</p>}
+        <footer className="welcome-footer">
+          <button type="button" className="welcome-back" onClick={() => { setSetupError(''); setSetupStep(step => Math.max(0, step - 1)); }} disabled={setupStep === 0 || busy}>Back</button>
+          {setupStep < 3 ? <button type="button" className="welcome-next" onClick={() => { setSetupError(''); setSetupStep(step => Math.min(3, step + 1)); }} disabled={busy}>{setupStep === 0 ? 'Start setup' : setupStep === 2 && setupFirewallState !== 'allowed' ? 'Continue anyway' : 'Continue'}<Icon name="arrow" size={15}/></button> : <button type="button" className="welcome-next" onClick={completeSetup}>Open SimplySound<Icon name="arrow" size={15}/></button>}
+        </footer>
+      </section>
+    </div>}
   </main>;
 }

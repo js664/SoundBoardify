@@ -6,6 +6,8 @@ const path = require('node:path');
 const net = require('node:net');
 const { isNewerVersion, isSimplySoundReleaseAssetUrl, isSimplySoundReleaseUrl } = require('./version-utils.cjs');
 const { createMarketplaceBridge } = require('./marketplace-bridge.cjs');
+const { buildFirewallCommand } = require('./firewall-command.cjs');
+const { buildSoundboardUrl } = require('./soundboard-link.cjs');
 
 app.setName('SimplySound');
 app.setAppUserModelId('com.simplysound.desktop');
@@ -18,6 +20,7 @@ if (!fs.existsSync(newUserData) && fs.existsSync(previousUserData)) {
   fs.cpSync(previousUserData, newUserData, { recursive: true, errorOnExist: true });
 }
 app.setPath('userData', newUserData);
+const setupStatePath = path.join(newUserData, 'setup-state.json');
 
 let backend;
 let marketplaceBridge;
@@ -159,15 +162,16 @@ async function createWindow(port) {
   appOrigin = `http://127.0.0.1:${port}`;
   Menu.setApplicationMenu(null);
   mainWindow = new BrowserWindow({
-    width: 1220,
-    height: 850,
-    minWidth: 850,
-    minHeight: 620,
-    backgroundColor: '#10110f',
+    width: 1080,
+    height: 780,
+    minWidth: 900,
+    minHeight: 660,
+    backgroundColor: '#202124',
     title: 'SimplySound',
     show: false,
     autoHideMenuBar: true,
-    titleBarStyle: 'default',
+    titleBarStyle: 'hidden',
+    titleBarOverlay: { color: '#202124', symbolColor: '#c9cbd1', height: 36 },
     icon: app.isPackaged ? path.join(process.resourcesPath, 'app-icon.ico') : path.join(__dirname, 'SimplySound.ico'),
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true, spellcheck: false },
   });
@@ -190,11 +194,13 @@ async function createWindow(port) {
 ipcMain.handle('SimplySound:configure-firewall', async (event, options) => {
   if (!mainWindow || event.sender !== mainWindow.webContents || !stableBackendPath) throw new Error('Firewall setup is only available from the SimplySound desktop window.');
   if (!Number.isInteger(activePort) || activePort < 1024 || activePort > 65535) throw new Error('The Web UI port is not ready yet.');
+  const lanAccess = options?.lanAccess === true;
   const tailscaleAccess = options?.tailscaleAccess === true;
+  if (!lanAccess && !tailscaleAccess) throw new Error('Enable Wi-Fi/LAN or Tailscale access before creating a firewall rule.');
   const powershell = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
   const script = path.join(process.resourcesPath, 'firewall-setup.ps1');
   const literal = value => `'${String(value).replaceAll("'", "''")}'`;
-  const elevatedScript = `& ${literal(script)} -Program ${literal(stableBackendPath)} -Port ${activePort} -TailscaleAccess $${tailscaleAccess ? 'true' : 'false'}`;
+  const elevatedScript = `& ${literal(script)} -Program ${literal(stableBackendPath)} -Port ${activePort} -LanAccess $${lanAccess ? 'true' : 'false'} -TailscaleAccess $${tailscaleAccess ? 'true' : 'false'}`;
   const encoded = Buffer.from(elevatedScript, 'utf16le').toString('base64');
   const elevatedArgs = `-NoProfile -ExecutionPolicy Bypass -EncodedCommand ${encoded}`;
   const launcher = `$process = Start-Process -FilePath ${literal(powershell)} -Verb RunAs -WindowStyle Hidden -PassThru -Wait -ArgumentList ${literal(elevatedArgs)}; exit $process.ExitCode`;
@@ -202,9 +208,40 @@ ipcMain.handle('SimplySound:configure-firewall', async (event, options) => {
   return true;
 });
 
+ipcMain.handle('SimplySound:firewall-command', (event, options) => {
+  if (!mainWindow || event.sender !== mainWindow.webContents || !stableBackendPath) throw new Error('The manual firewall command is only available from the SimplySound desktop window.');
+  return buildFirewallCommand({
+    program: stableBackendPath,
+    port: activePort,
+    lanAccess: options?.lanAccess === true,
+    tailscaleAccess: options?.tailscaleAccess === true,
+  });
+});
+
+ipcMain.handle('SimplySound:setup-status', async event => {
+  if (!mainWindow || event.sender !== mainWindow.webContents) throw new Error('Setup status is only available from the SimplySound desktop window.');
+  try {
+    const state = JSON.parse(await fs.promises.readFile(setupStatePath, 'utf8'));
+    return state.completed === true;
+  } catch { return false; }
+});
+
+ipcMain.handle('SimplySound:setup-complete', async event => {
+  if (!mainWindow || event.sender !== mainWindow.webContents) throw new Error('Setup completion is only available from the SimplySound desktop window.');
+  await fs.promises.mkdir(path.dirname(setupStatePath), { recursive: true });
+  await fs.promises.writeFile(setupStatePath, JSON.stringify({ completed: true, completedAt: new Date().toISOString() }));
+  return true;
+});
+
 ipcMain.handle('SimplySound:app-version', event => {
   if (!mainWindow || event.sender !== mainWindow.webContents) throw new Error('Version information is only available in SimplySound.');
   return app.getVersion();
+});
+
+ipcMain.handle('SimplySound:open-soundboard', async event => {
+  if (!mainWindow || event.sender !== mainWindow.webContents || !appOrigin) throw new Error('The soundboard is not ready yet.');
+  await shell.openExternal(buildSoundboardUrl(appOrigin));
+  return true;
 });
 
 ipcMain.handle('SimplySound:hotkey-status', event => {
@@ -258,10 +295,24 @@ function watchBackendPort() {
   }, 350);
 }
 
-app.on('before-quit', () => { if (portPoll) clearInterval(portPoll); if (hotkeyPoll) clearInterval(hotkeyPoll); globalShortcut.unregisterAll(); if (backend && !backend.killed) backend.kill(); marketplaceBridge?.server.close(); });
+app.on('before-quit', () => {
+  if (portPoll) clearInterval(portPoll);
+  if (hotkeyPoll) clearInterval(hotkeyPoll);
+  // A secondary launch can call app.quit() before Electron reaches ready.
+  // globalShortcut is only available after ready, so guard early shutdowns.
+  if (app.isReady()) globalShortcut.unregisterAll();
+  if (backend && !backend.killed) backend.kill();
+  marketplaceBridge?.server.close();
+});
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 
 const hasLock = app.requestSingleInstanceLock();
+app.on('second-instance', () => {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+});
 if (!hasLock) app.quit();
 else app.whenReady().then(async () => {
   try { const port = await startBackend(); await createWindow(port); watchBackendPort(); void refreshGlobalHotkeys(); hotkeyPoll = setInterval(() => { void refreshGlobalHotkeys(); }, 3000); }
