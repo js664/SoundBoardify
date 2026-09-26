@@ -23,15 +23,26 @@ function Icon({ name, size = 18 }) {
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
 }
 function Switch({ checked, onChange, label, disabled = false }) { return <button type="button" role="switch" aria-checked={checked} aria-label={label} aria-disabled={disabled} disabled={disabled} className={`desktop-switch ${checked ? 'on' : ''}`} onClick={() => onChange(!checked)}><i/></button>; }
-function DevicePicker({ id, label, detail, value, currentName, devices, onChange }) {
+function DevicePicker({ id, label, detail, value, currentName, devices, onChange, onRefreshDevices }) {
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState('');
   const triggerRef = useRef(null);
   const listRef = useRef(null);
+  const wasOpenRef = useRef(false);
   const selected = devices.find(device => device.id === value);
   const ordered = useMemo(() => [...devices].sort((a, b) => Number(b.state === 'Active') - Number(a.state === 'Active') || a.name.localeCompare(b.name)), [devices]);
   const options = useMemo(() => [null, ...ordered], [ordered]);
   const selectedIndex = Math.max(0, options.findIndex(device => device?.id === value));
+  const canSelect = device => !device || device.state === 'Active';
+  const findSelectable = (from, direction) => {
+    for (let offset = 0; offset < options.length; offset++) {
+      const index = (from + direction * offset + options.length) % options.length;
+      if (canSelect(options[index])) return index;
+    }
+    return 0;
+  };
   useEffect(() => {
     if (!open) return;
     const close = event => { if (!event.target.closest(`[data-picker="${id}"]`)) setOpen(false); };
@@ -39,38 +50,53 @@ function DevicePicker({ id, label, detail, value, currentName, devices, onChange
     return () => document.removeEventListener('pointerdown', close);
   }, [id, open]);
   useEffect(() => {
-    if (!open) return;
-    setActiveIndex(selectedIndex);
-    requestAnimationFrame(() => listRef.current?.focus());
-  }, [open, selectedIndex]);
+    if (!open) { wasOpenRef.current = false; return; }
+    if (!wasOpenRef.current) {
+      wasOpenRef.current = true;
+      setActiveIndex(canSelect(options[selectedIndex]) ? selectedIndex : 0);
+      requestAnimationFrame(() => listRef.current?.focus());
+      return;
+    }
+    setActiveIndex(current => canSelect(options[current]) ? current : canSelect(options[selectedIndex]) ? selectedIndex : 0);
+  }, [open, selectedIndex, options]);
   const choose = next => { onChange(next); setOpen(false); requestAnimationFrame(() => triggerRef.current?.focus()); };
+  const toggleOpen = () => {
+    if (open) { setOpen(false); return; }
+    setOpen(true); setRefreshError(''); setRefreshing(true);
+    Promise.resolve().then(onRefreshDevices).catch(() => setRefreshError('Couldn’t refresh devices. Showing the last available list.')).finally(() => setRefreshing(false));
+  };
   const onListKeyDown = event => {
     if (event.key === 'Escape') {
       event.preventDefault(); setOpen(false); requestAnimationFrame(() => triggerRef.current?.focus());
       return;
     }
     let next = activeIndex;
-    if (event.key === 'ArrowDown') next = (activeIndex + 1) % options.length;
-    else if (event.key === 'ArrowUp') next = (activeIndex - 1 + options.length) % options.length;
-    else if (event.key === 'Home') next = 0;
-    else if (event.key === 'End') next = options.length - 1;
+    if (event.key === 'ArrowDown') next = findSelectable((activeIndex + 1) % options.length, 1);
+    else if (event.key === 'ArrowUp') next = findSelectable((activeIndex - 1 + options.length) % options.length, -1);
+    else if (event.key === 'Home') next = findSelectable(0, 1);
+    else if (event.key === 'End') next = findSelectable(options.length - 1, -1);
     else if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault(); choose(options[activeIndex]?.id ?? null); return;
+      event.preventDefault(); if (canSelect(options[activeIndex])) choose(options[activeIndex]?.id ?? null); return;
     } else return;
     event.preventDefault(); setActiveIndex(next);
   };
   return <div className={`desktop-device ${open ? 'is-open' : ''}`} data-picker={id}>
     <div className="desktop-device-copy"><strong>{label}</strong><small>{detail}</small></div>
-    <button ref={triggerRef} type="button" className="device-picker-trigger" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(value => !value)}>
+    <button ref={triggerRef} type="button" className="device-picker-trigger" aria-haspopup="listbox" aria-expanded={open} onClick={toggleOpen}>
       <span className={`device-led ${selected?.state === 'Active' || !value ? 'ready' : ''}`}/><span className="device-picker-value"><strong>{selected?.name || (value ? 'Selected device unavailable' : currentName || 'Windows default')}</strong><small>{selected ? `${selected.sampleRate ? `${Math.round(selected.sampleRate / 1000)} kHz · ` : ''}${selected.state}` : 'Follow Windows default'}</small></span><span className="device-chevron"><Icon name="chevron" size={16}/></span>
     </button>
-    {open && <div ref={listRef} className="device-picker-menu" role="listbox" tabIndex={0} aria-label={`${label} devices`} aria-activedescendant={`${id}-option-${activeIndex}`} onKeyDown={onListKeyDown}>
-      {options.map((device, index) => {
-        const isSelected = device ? value === device.id : !value;
-        return <div id={`${id}-option-${index}`} role="option" aria-selected={isSelected} data-active={activeIndex === index} key={device?.id ?? 'default'} onMouseMove={() => setActiveIndex(index)} onClick={() => choose(device?.id ?? null)}>
-          <span><strong>{device?.name ?? 'Windows default'}</strong><small>{device ? `${device.sampleRate ? `${Math.round(device.sampleRate / 1000)} kHz · ` : ''}${device.state}` : currentName || 'Follow your system playback device'}</small></span>{isSelected && <Icon name="check" size={15}/>}
-        </div>;
-      })}
+    {open && <div className="device-picker-popover" aria-busy={refreshing}>
+      {refreshing && <div className="device-picker-status" role="status">Checking connected audio devices…</div>}
+      {refreshError && <div className="device-picker-status error" role="status">{refreshError}</div>}
+      <div ref={listRef} className="device-picker-menu" role="listbox" tabIndex={0} aria-label={`${label} devices`} aria-activedescendant={`${id}-option-${activeIndex}`} onKeyDown={onListKeyDown}>
+        {options.map((device, index) => {
+          const isSelected = device ? value === device.id : !value;
+          const unavailable = !canSelect(device);
+          return <div id={`${id}-option-${index}`} role="option" aria-selected={isSelected} aria-disabled={unavailable} data-active={activeIndex === index} key={device?.id ?? 'default'} onMouseMove={() => { if (!unavailable) setActiveIndex(index); }} onClick={() => { if (!unavailable) choose(device?.id ?? null); }}>
+            <span><strong>{device?.name ?? 'Windows default'}</strong><small>{device ? `${device.sampleRate ? `${Math.round(device.sampleRate / 1000)} kHz · ` : ''}${device.state}` : currentName || 'Follow your system playback device'}</small></span>{isSelected && <Icon name="check" size={15}/>}
+          </div>;
+        })}
+      </div>
     </div>}
   </div>;
 }
@@ -112,6 +138,10 @@ export default function DesktopApp() {
     const [nextSettings, endpoints, state] = await Promise.all([request('/api/settings'), request('/api/audio/devices'), request('/api/status')]);
     setSettings(nextSettings); setPortDraft(String(nextSettings.port)); setDevices(endpoints || []); setStatus(state);
   }
+  const refreshDevices = useCallback(async () => {
+    const endpoints = await request('/api/audio/devices');
+    setDevices(endpoints || []);
+  }, []);
   const checkForUpdates = useCallback(async () => {
     const bridge = window.SimplySoundDesktop;
     if (!bridge?.getVersion || !bridge?.checkForUpdates) { setUpdateState('unavailable'); return; }
@@ -361,10 +391,10 @@ export default function DesktopApp() {
         {activeSection === 'audio' && <div className="settings-columns single-column">
           <section className="settings-section audio-section">
             <div className="section-heading"><h2>Output & monitoring</h2></div>
-            <DevicePicker id="playback" label="Soundboard output" detail="Defaults to the Windows playback device." value={settings.endpointId || null} currentName={status?.endpoint} devices={devices} onChange={selectDevice}/>
+            <DevicePicker id="playback" label="Soundboard output" detail="Defaults to the Windows playback device." value={settings.endpointId || null} currentName={status?.endpoint} devices={devices} onChange={selectDevice} onRefreshDevices={refreshDevices}/>
             <div className="setting-divider"/>
             <div className="setting-inline"><div><strong>Hear sounds on this PC</strong><small>Play a local copy while sending audio to your output.</small></div><Switch label="Hear sounds on this PC" checked={settings.monitorLocally} onChange={monitorLocally => patchSettings({ monitorLocally }).catch(() => {})}/></div>
-            {settings.monitorLocally && <DevicePicker id="monitor" label="Local playback" detail="Optional listening device; follows Windows by default." value={settings.monitorEndpointId || null} currentName={status?.monitorEndpoint} devices={devices} onChange={selectMonitorDevice}/>}
+            {settings.monitorLocally && <DevicePicker id="monitor" label="Local playback" detail="Optional listening device; follows Windows by default." value={settings.monitorEndpointId || null} currentName={status?.monitorEndpoint} devices={devices} onChange={selectMonitorDevice} onRefreshDevices={refreshDevices}/>}
             <label className="master-level"><span><strong>Overall volume</strong><output>{Math.round(settings.masterVolume * 100)}%</output></span><input type="range" min="0" max="1" step=".01" value={settings.masterVolume} onChange={event => changeMasterVolume(Number(event.target.value))}/></label>
             <div className="setting-inline virtual-mic-headroom"><div><strong>Reduce level for a virtual microphone</strong><small>Use this if sound clips on a virtual mic. Local playback stays unchanged.</small></div><Switch label="Reduce level for a virtual microphone" checked={settings.useVirtualMicHeadroom} onChange={useVirtualMicHeadroom => patchSettings({ useVirtualMicHeadroom }).catch(() => {})}/></div>
             {settings.useVirtualMicHeadroom && <label className="master-level mic-output-level"><span><strong>Virtual microphone level</strong><output>{(settings.micOutputGain * 100).toFixed(1)}%</output></span><input type="range" min="0" max=".25" step=".005" value={settings.micOutputGain} onChange={event => changeMicOutputGain(Number(event.target.value))}/></label>}

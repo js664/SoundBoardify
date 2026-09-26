@@ -122,12 +122,15 @@
 .device-picker-value small { color: var(--desk-muted); font-size: 11px; }
 .device-chevron { display: flex; color: var(--desk-muted); transition: transform .16s ease; }
 .desktop-device.is-open .device-chevron { transform: rotate(180deg); }
-.device-picker-menu { position: absolute; z-index: 6; top: calc(100% - 1px); right: 0; width: min(410px,100%); max-height: 300px; overflow: auto; padding: 5px; background: #2a2a2c; border: 1px solid var(--desk-line-strong); border-radius: 8px; box-shadow: 0 14px 36px rgba(0,0,0,.42); animation: menu-in .14s ease both; }
-@keyframes menu-in { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
+.device-picker-popover { position: absolute; z-index: 6; top: calc(100% - 1px); right: 0; width: min(410px,100%); max-height: 300px; overflow: auto; padding: 5px; background: #2a2a2c; border: 1px solid var(--desk-line-strong); border-radius: 8px; box-shadow: 0 14px 36px rgba(0,0,0,.42); animation: menu-in .14s ease both; }
+.device-picker-status { padding: 7px 10px; color: var(--desk-muted); font-size: 11px; line-height: 1.4; }
+.device-picker-status.error { color: var(--desk-yellow); }
 .device-picker-menu { outline: none; }
+@keyframes menu-in { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
 .device-picker-menu:focus-visible { outline: 2px solid #8cb8ff; outline-offset: 2px; }
 .device-picker-menu [role="option"] { display: flex; width: 100%; min-height: 42px; align-items: center; justify-content: space-between; gap: 12px; padding: 7px 10px; color: var(--desk-text); background: transparent; border: 0; border-radius: 5px; text-align: left; cursor: default; }
-.device-picker-menu [role="option"]:hover, .device-picker-menu [role="option"][data-active="true"] { background: #3a3a3d; }
+.device-picker-menu [role="option"]:hover:not([aria-disabled="true"]), .device-picker-menu [role="option"][data-active="true"] { background: #3a3a3d; }
+.device-picker-menu [role="option"][aria-disabled="true"] { opacity: .48; cursor: not-allowed; }
 .device-picker-menu [role="option"]>span { display: grid; gap: 1px; }
 .device-picker-menu strong { font-size: 12px; font-weight: 500; }
 .device-picker-menu small { color: var(--desk-muted); font-size: 11px; }
