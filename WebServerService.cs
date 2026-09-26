@@ -14,14 +14,16 @@ namespace VRSoundboard;
 
 public sealed class WebSocketHub
 {
-    private readonly ConcurrentDictionary<Guid, (WebSocket Socket, SemaphoreSlim WriteGate)> _clients = new();
+    private sealed record ClientConnection(WebSocket Socket, SemaphoreSlim WriteGate);
+    private readonly ConcurrentDictionary<Guid, ClientConnection> _clients = new();
     public int ClientCount => _clients.Count;
     public event Action? ClientCountChanged;
     public async Task Accept(HttpContext context)
     {
         using var socket = await context.WebSockets.AcceptWebSocketAsync();
-        var id = Guid.NewGuid(); var gate = new SemaphoreSlim(1, 1);
-        _clients[id] = (socket, gate); ClientCountChanged?.Invoke(); Log.Information("WebSocket connected {Client}", id);
+        var id = Guid.NewGuid();
+        _clients[id] = new ClientConnection(socket, new SemaphoreSlim(1, 1));
+        ClientCountChanged?.Invoke(); Log.Information("WebSocket connected {Client}", id);
         try
         {
             var buffer = new byte[1024];
@@ -33,21 +35,40 @@ public sealed class WebSocketHub
         }
         catch (OperationCanceledException) { }
         catch (WebSocketException) { }
-        finally { _clients.TryRemove(id, out _); gate.Dispose(); ClientCountChanged?.Invoke(); Log.Information("WebSocket disconnected {Client}", id); }
+        finally { _clients.TryRemove(id, out _); ClientCountChanged?.Invoke(); Log.Information("WebSocket disconnected {Client}", id); }
     }
     public async Task Broadcast(string type, object? data)
     {
         var bytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { type, data }, JsonOptions));
-        foreach (var entry in _clients.ToArray())
+        var sends = _clients.ToArray().Select(entry => SendToClient(entry.Value, type, bytes));
+        await Task.WhenAll(sends);
+    }
+    private static async Task SendToClient(ClientConnection client, string type, byte[] bytes)
+    {
+        var acquired = false;
+        try
         {
-            try
+            if (type == "position")
             {
-                await entry.Value.WriteGate.WaitAsync();
-                try { if (entry.Value.Socket.State == WebSocketState.Open) await entry.Value.Socket.SendAsync(bytes, WebSocketMessageType.Text, true, CancellationToken.None); }
-                finally { entry.Value.WriteGate.Release(); }
+                // Playback position is transient. Skip stale frames when a slow client
+                // still has a previous frame in flight; the next tick carries newer state.
+                acquired = client.WriteGate.Wait(0);
+                if (!acquired) return;
             }
-            catch { _clients.TryRemove(entry.Key, out _); }
+            else
+            {
+                acquired = await client.WriteGate.WaitAsync(TimeSpan.FromSeconds(1));
+                if (!acquired) { client.Socket.Abort(); return; }
+            }
+            if (client.Socket.State != WebSocketState.Open) return;
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+            await client.Socket.SendAsync(bytes, WebSocketMessageType.Text, true, timeout.Token);
         }
+        catch (OperationCanceledException) { client.Socket.Abort(); }
+        catch (WebSocketException) { client.Socket.Abort(); }
+        catch (ObjectDisposedException) { client.Socket.Abort(); }
+        catch (InvalidOperationException) { client.Socket.Abort(); }
+        finally { if (acquired) client.WriteGate.Release(); }
     }
     internal static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 }

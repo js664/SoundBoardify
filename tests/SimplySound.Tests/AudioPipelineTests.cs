@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.NetworkInformation;
 using System.IO;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
@@ -167,6 +168,24 @@ public sealed class AudioPipelineTests
 
 public sealed class RuntimeBehaviorTests
 {
+    [Fact]
+    public void NetworkAddressSelectionPrefersRoutedLanAndKeepsTailscaleSeparate()
+    {
+        var snapshots = new[]
+        {
+            new NetworkAddressSnapshot(true, NetworkInterfaceType.Ethernet, false, [IPAddress.Parse("192.168.10.8")]),
+            new NetworkAddressSnapshot(true, NetworkInterfaceType.Wireless80211, true, [IPAddress.Parse("192.168.20.9")]),
+            new NetworkAddressSnapshot(true, NetworkInterfaceType.Tunnel, false, [IPAddress.Parse("100.88.2.3")]),
+            new NetworkAddressSnapshot(true, NetworkInterfaceType.Ethernet, false, [IPAddress.Parse("169.254.1.2"), IPAddress.Parse("8.8.8.8")]),
+            new NetworkAddressSnapshot(false, NetworkInterfaceType.Ethernet, true, [IPAddress.Parse("10.0.0.7")]),
+        };
+
+        var selected = AppCoordinator.SelectNetworkAddresses(snapshots);
+
+        Assert.Equal(IPAddress.Parse("192.168.20.9"), selected.Lan);
+        Assert.Equal(IPAddress.Parse("100.88.2.3"), selected.Tailscale);
+    }
+
     [Theory]
     [InlineData(true, "old", "new", true, true, true)]
     [InlineData(false, "chosen", "windows", true, true, false)]

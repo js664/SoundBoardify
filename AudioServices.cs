@@ -2,6 +2,7 @@ using NAudio.CoreAudioApi;
 using NAudio.Wave;
 using Serilog;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 
 namespace VRSoundboard;
 
@@ -38,6 +39,37 @@ public sealed class AudioDeviceService(AudioExecutionContext context) : IDisposa
         foreach (var device in devices) if (!ReferenceEquals(device, selected)) device.Dispose();
         return selected;
     }
+    public (bool CurrentEndpointActive, string? DefaultEndpointId) GetReconnectState(string? currentId, bool followsWindowsDefault)
+    {
+        if (!context.IsCurrent) return context.Invoke(() => GetReconnectState(currentId, followsWindowsDefault));
+        MMDevice? defaultDevice = null;
+        try
+        {
+            if (followsWindowsDefault)
+            {
+                try { defaultDevice = Enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Console); }
+                catch (Exception ex) when (ex is NAudio.MmException or COMException or InvalidOperationException) { }
+            }
+            var defaultId = defaultDevice?.ID;
+            var checkId = currentId ?? defaultId;
+            var active = false;
+            if (checkId is not null)
+            {
+                if (defaultDevice is not null && string.Equals(defaultId, checkId, StringComparison.Ordinal))
+                {
+                    try { active = defaultDevice.State == DeviceState.Active; }
+                    catch (Exception ex) when (ex is NAudio.MmException or COMException or InvalidOperationException) { active = false; }
+                }
+                else
+                {
+                    try { using var selected = Enumerator.GetDevice(checkId); active = selected.State == DeviceState.Active; }
+                    catch (Exception ex) when (ex is NAudio.MmException or COMException or InvalidOperationException or ArgumentException) { active = false; }
+                }
+            }
+            return (active, defaultId);
+        }
+        finally { defaultDevice?.Dispose(); }
+    }
     public MMDevice DefaultRender() => context.IsCurrent ? Enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Console) : context.Invoke(DefaultRender);
     public MMDevice? SteamCapture()
     {
@@ -71,6 +103,7 @@ public sealed class AudioEngine(AudioDeviceService devices, Storage storage, Aud
     private SwitchingWaveProvider? _monitorSource;
     private GainSampleProvider? _monitorGainStage;
     private float _monitorGainMultiplier = 1;
+    private int _tickPending;
     private string? _monitorEndpointId;
     private string? _monitorEndpointName;
     private Guid? _soundId;
@@ -240,7 +273,12 @@ public sealed class AudioEngine(AudioDeviceService devices, Storage storage, Aud
     }
     public void Tick()
     {
-        if (!context.IsCurrent) { context.Post(Tick); return; }
+        if (!context.IsCurrent)
+        {
+            if (Interlocked.Exchange(ref _tickPending, 1) != 0) return;
+            context.Post(() => { Interlocked.Exchange(ref _tickPending, 0); Tick(); });
+            return;
+        }
         Guid? completed = null; PlaybackState state;
         lock (_gate)
         {

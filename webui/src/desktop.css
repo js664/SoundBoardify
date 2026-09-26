@@ -237,7 +237,7 @@
 .welcome-progress-step.current i, .welcome-progress-step.done i { color: #fff; background: var(--desk-blue); }
 .welcome-content { min-height: 0; flex: 1 1 auto; overflow: auto; padding: 25px 28px 20px; }
 .welcome-content>* { animation: step-in .18s ease both; }
-@keyframes step-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@keyframes step-in { from { opacity: 1; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 .welcome-intro { display: grid; justify-items: center; padding: 2px 8px 6px; text-align: center; }
 .welcome-hero-mark { display: grid; width: 76px; height: 76px; place-items: center; margin: 1px 0 18px; background: #303033; border-radius: 16px; }
 .welcome-hero-mark img { z-index: 1; width: 58px; height: 58px; object-fit: contain; border-radius: 11px; }
@@ -454,3 +454,37 @@
 @media (prefers-reduced-motion: reduce) {
   .options-only *, .options-only *::before, .options-only *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+
+/* Final Electron polish: one quiet neutral system with blue reserved for focus. */
+.options-only .studio-sidebar { background: #191a1e; border-right-color: #2b2d32; }
+.options-only .studio-navigation { gap: 5px; margin-top: 34px; }
+.options-only .studio-nav-item { min-height: 40px; padding-inline: 10px; border-radius: 8px; color: #b8bdc7; transition: color .18s ease,background .18s ease,box-shadow .18s ease; }
+.options-only .studio-nav-item::before { position: absolute; top: 10px; bottom: 10px; left: 0; width: 2px; border-radius: 2px; background: #78aaff; content: ''; opacity: 0; transform: scaleY(.55); transition: opacity .18s ease,transform .22s cubic-bezier(.2,.8,.2,1); }
+.options-only .studio-nav-item:hover { color: #f3f5f8; background: #25282e; }
+.options-only .studio-nav-item.active { color: #f4f7fc; background: #29364a; box-shadow: inset 0 0 0 1px #36475d; }
+.options-only .studio-nav-item.active::before { opacity: 1; transform: scaleY(1); }
+.options-only .nav-symbol,.options-only .nav-symbol-overview,.options-only .nav-symbol-audio,.options-only .nav-symbol-network,.options-only .nav-symbol-updates { color: #9ba4b2; background: transparent; transition: color .18s ease,background .18s ease; }
+.options-only .studio-nav-item:hover .nav-symbol { color: #e1e8f2; }
+.options-only .studio-nav-item.active .nav-symbol { color: #acd0ff; background: #344b69; }
+.options-only .sidebar-health { border-top-color: #303238; }
+.options-only .sidebar-health>i.connected { box-shadow: 0 0 0 3px rgba(105,211,155,.1),0 0 11px rgba(105,211,155,.27); }
+.options-only .open-soundboard { min-height: 36px; padding-inline: 14px; border: 1px solid #4a86f5; border-radius: 8px; font-size: 12px; font-weight: 600; box-shadow: 0 3px 11px rgba(35,91,190,.17); transition: background .17s ease,border-color .17s ease,box-shadow .17s ease,transform .17s ease; }
+.options-only .open-soundboard:hover { background: #4384fa; border-color: #6da0ff; box-shadow: 0 6px 17px rgba(35,91,190,.25); transform: translateY(-1px); }
+.options-only .open-soundboard:active { transform: scale(.98); }
+.options-only .connect-panel { background: linear-gradient(155deg,#2a2c31,#27292e 68%); border-color: #3b3e46; box-shadow: 0 12px 30px rgba(0,0,0,.09); }
+.options-only .qr-frame img { border: 1px solid rgba(255,255,255,.82); box-shadow: 0 5px 18px rgba(0,0,0,.16); }
+.options-only .phone-link-field { border-color: #3c414a; background: #222429; }
+.options-only .phone-link-field a { font-size: 12px; }
+.options-only .overview-summary { background: #27292e; border-color: #393c43; }
+.options-only .summary-row { min-height: 55px; transition: background .17s ease,color .17s ease; }
+.options-only button.summary-row:hover { color: #f7f9fc; background: #30333a; }
+.options-only .summary-label svg { color: #9ba9bd; }
+.options-only .summary-row>strong { color: #b8c0cc; }
+.options-only .device-picker-trigger { transition: background .17s ease,border-color .17s ease,box-shadow .17s ease,transform .17s ease; }
+.options-only .device-picker-trigger:hover,.options-only .desktop-device.is-open .device-picker-trigger { border-color: #577baa; box-shadow: 0 0 0 3px rgba(74,132,218,.1); }
+.options-only .connection-segment { border: 1px solid #343944; background: #1e2025; }
+.options-only .segment-selection { background: #3a4658; box-shadow: inset 0 0 0 1px #4b596e; }
+.options-only .version-check,.options-only .version-release { min-height: 36px; border-radius: 8px; transition: background .17s ease,border-color .17s ease,box-shadow .17s ease,transform .17s ease; }
+.options-only .version-check:hover:not(:disabled) { border-color: #686e79; background: #363940; }
+.options-only .version-release:hover { box-shadow: 0 4px 13px rgba(35,91,190,.22); transform: translateY(-1px); }
+.options-only .studio-nav-item:active,.options-only .sidebar-setup:active { transform: scale(.99); }

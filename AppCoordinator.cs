@@ -7,10 +7,16 @@ namespace VRSoundboard;
 
 public sealed class AppCoordinator(Storage storage, SoundLibrary library, AudioEngine audio, AudioDeviceService devices)
 {
+    private const int PlaybackUpdateIntervalMs = 50;
     private readonly object _settingsGate = new();
+    private readonly object _networkGate = new();
     private AppSettings _settings = storage.LoadSettings();
     private int _activeWebPort;
-    private readonly System.Threading.Timer _timer = new(_ => audio.Tick(), null, 150, 150);
+    private long _networkCacheExpiresAt;
+    private string _lanAddress = "127.0.0.1";
+    private string? _tailscaleAddress;
+    private bool _networkEventsAttached;
+    private readonly System.Threading.Timer _timer = new(_ => audio.Tick(), null, Timeout.Infinite, Timeout.Infinite);
     private System.Threading.Timer? _reconnectTimer;
     public event Action<string, object?>? Changed;
     public SoundLibrary Library => library;
@@ -18,29 +24,72 @@ public sealed class AppCoordinator(Storage storage, SoundLibrary library, AudioE
     public AudioDeviceService Devices => devices;
     public Storage Storage => storage;
     public AppSettings Settings { get { lock (_settingsGate) return Clone(_settings); } }
-    private IReadOnlyList<IPAddress> NetworkAddresses => NetworkInterface.GetAllNetworkInterfaces()
-        .Where(n => n.OperationalStatus == OperationalStatus.Up && n.NetworkInterfaceType != NetworkInterfaceType.Loopback)
-        .SelectMany(n =>
+    public string LanAddress => CurrentNetworkAddresses.Lan;
+    public string? TailscaleAddress => CurrentNetworkAddresses.Tailscale;
+    private (string Lan, string? Tailscale) CurrentNetworkAddresses
+    {
+        get
         {
-            var hasGateway = n.GetIPProperties().GatewayAddresses.Any(g => g.Address.AddressFamily == AddressFamily.InterNetwork && !IPAddress.Any.Equals(g.Address));
-            var interfaceScore = n.NetworkInterfaceType switch
+            lock (_networkGate)
             {
-                NetworkInterfaceType.Wireless80211 => 20,
-                NetworkInterfaceType.Ethernet => 15,
-                _ => 0
-            };
-            return n.GetIPProperties().UnicastAddresses
-                .Select(a => a.Address)
-                .Where(a => a.AddressFamily == AddressFamily.InterNetwork && IsPrivate(a) && !IsTailscale(a) && !IsLinkLocal(a))
-                .Select(a => (Address: a, Score: interfaceScore + (hasGateway ? 100 : 0)));
-        })
-        .OrderByDescending(candidate => candidate.Score)
-        .Select(candidate => candidate.Address).ToArray();
-    public string LanAddress => NetworkAddresses.FirstOrDefault(a => !IsTailscale(a))?.ToString() ?? "127.0.0.1";
-    public string? TailscaleAddress => NetworkInterface.GetAllNetworkInterfaces()
-        .Where(n => n.OperationalStatus == OperationalStatus.Up)
-        .SelectMany(n => n.GetIPProperties().UnicastAddresses)
-        .Select(a => a.Address).FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetwork && IsTailscale(a))?.ToString();
+                if (Environment.TickCount64 >= _networkCacheExpiresAt) RefreshNetworkAddressesLocked();
+                return (_lanAddress, _tailscaleAddress);
+            }
+        }
+    }
+    private void RefreshNetworkAddressesLocked()
+    {
+        try
+        {
+            var snapshots = new List<NetworkAddressSnapshot>();
+            foreach (var network in NetworkInterface.GetAllNetworkInterfaces())
+            {
+                var isUp = network.OperationalStatus == OperationalStatus.Up;
+                if (!isUp) continue;
+                try
+                {
+                    var properties = network.GetIPProperties();
+                    var hasGateway = properties.GatewayAddresses.Any(g => g.Address.AddressFamily == AddressFamily.InterNetwork && !IPAddress.Any.Equals(g.Address));
+                    snapshots.Add(new NetworkAddressSnapshot(isUp, network.NetworkInterfaceType, hasGateway, properties.UnicastAddresses.Select(a => a.Address).ToArray()));
+                }
+                catch (NetworkInformationException) { }
+            }
+            var selected = SelectNetworkAddresses(snapshots);
+            _lanAddress = selected.Lan?.ToString() ?? "127.0.0.1";
+            _tailscaleAddress = selected.Tailscale?.ToString();
+        }
+        catch (NetworkInformationException ex) { Log.Warning(ex, "Could not refresh local network addresses; keeping the last known addresses"); }
+        finally { _networkCacheExpiresAt = Environment.TickCount64 + 5000; }
+    }
+    private void InvalidateNetworkAddresses()
+    {
+        lock (_networkGate) _networkCacheExpiresAt = 0;
+    }
+    private void OnNetworkAddressChanged(object? sender, EventArgs e) => InvalidateNetworkAddresses();
+    private void OnNetworkAvailabilityChanged(object? sender, NetworkAvailabilityEventArgs e) => InvalidateNetworkAddresses();
+    internal static (IPAddress? Lan, IPAddress? Tailscale) SelectNetworkAddresses(IEnumerable<NetworkAddressSnapshot> interfaces)
+    {
+        var active = interfaces.Where(network => network.IsUp).ToArray();
+        var tailscale = active.SelectMany(network => network.Addresses).FirstOrDefault(address => address.AddressFamily == AddressFamily.InterNetwork && IsTailscale(address));
+        var lan = active
+            .Where(network => network.Type != NetworkInterfaceType.Loopback)
+            .SelectMany(network =>
+            {
+                var interfaceScore = network.Type switch
+                {
+                    NetworkInterfaceType.Wireless80211 => 20,
+                    NetworkInterfaceType.Ethernet => 15,
+                    _ => 0
+                };
+                return network.Addresses
+                    .Where(address => address.AddressFamily == AddressFamily.InterNetwork && IsPrivate(address) && !IsTailscale(address) && !IsLinkLocal(address))
+                    .Select(address => (Address: address, Score: interfaceScore + (network.HasIpv4Gateway ? 100 : 0)));
+            })
+            .OrderByDescending(candidate => candidate.Score)
+            .Select(candidate => candidate.Address)
+            .FirstOrDefault();
+        return (lan, tailscale);
+    }
     public int ActiveWebPort => Volatile.Read(ref _activeWebPort);
     public int EffectivePort => ActiveWebPort is > 0 ? ActiveWebPort : Settings.Port;
     public string? PhoneUrl => Settings.LanAccess && LanAddress != "127.0.0.1" ? BuildPhoneUrl(LanAddress, EffectivePort, Settings.PairingToken) : null;
@@ -49,6 +98,12 @@ public sealed class AppCoordinator(Storage storage, SoundLibrary library, AudioE
     public void SetActiveWebPort(int? port) => Volatile.Write(ref _activeWebPort, port ?? 0);
     public AppCoordinator Initialize()
     {
+        if (!_networkEventsAttached)
+        {
+            NetworkChange.NetworkAddressChanged += OnNetworkAddressChanged;
+            NetworkChange.NetworkAvailabilityChanged += OnNetworkAvailabilityChanged;
+            _networkEventsAttached = true;
+        }
         // Existing installations stored the old opt-in default as false. Apply the new
         // user-requested default once, then preserve later changes to the checkbox.
         if (_settings.LocalMonitorPreferenceVersion == 0)
@@ -60,7 +115,7 @@ public sealed class AppCoordinator(Storage storage, SoundLibrary library, AudioE
         library.Changed += (type, value) => Changed?.Invoke(type, value);
         audio.Changed += (type, value) => Changed?.Invoke(type, value);
         audio.Connect(_settings.EndpointId);
-        _timer.Change(150, 150);
+        _timer.Change(PlaybackUpdateIntervalMs, PlaybackUpdateIntervalMs);
         _reconnectTimer = new System.Threading.Timer(_ => CheckAudio(), null, 5000, 5000);
         Log.Information("Application started; web dashboard is available on port {Port}", EffectivePort);
         return this;
@@ -137,14 +192,24 @@ public sealed class AppCoordinator(Storage storage, SoundLibrary library, AudioE
         {
             var settings = Settings;
             var id = audio.EndpointId;
-            using var defaultDevice = settings.EndpointId is null ? devices.DefaultRender() : null;
-            var defaultId = defaultDevice?.ID;
-            if (ShouldReconnectAudio(settings.EndpointId is null, id, defaultId, devices.Enumerate(settings.EndpointId ?? id).Any(d => d.Id == id && d.State == "Active"), audio.Status.StartsWith("Connected", StringComparison.Ordinal)))
+            var reconnectState = devices.GetReconnectState(id, settings.EndpointId is null);
+            if (ShouldReconnectAudio(settings.EndpointId is null, id, reconnectState.DefaultEndpointId, reconnectState.CurrentEndpointActive, audio.Status.StartsWith("Connected", StringComparison.Ordinal)))
             { audio.Connect(settings.EndpointId); return; }
         }
         catch (Exception ex) { Log.Warning(ex, "Audio reconnect check failed"); }
     }
     public static bool ShouldReconnectAudio(bool followsWindowsDefault, string? currentEndpointId, string? windowsDefaultId, bool currentEndpointActive, bool connected)
         => !currentEndpointActive || !connected || followsWindowsDefault && !string.Equals(currentEndpointId, windowsDefaultId, StringComparison.Ordinal);
-    public void Shutdown() { _timer.Dispose(); _reconnectTimer?.Dispose(); audio.Dispose(); }
+    public void Shutdown()
+    {
+        if (_networkEventsAttached)
+        {
+            NetworkChange.NetworkAddressChanged -= OnNetworkAddressChanged;
+            NetworkChange.NetworkAvailabilityChanged -= OnNetworkAvailabilityChanged;
+            _networkEventsAttached = false;
+        }
+        _timer.Dispose(); _reconnectTimer?.Dispose(); audio.Dispose();
+    }
 }
+
+internal sealed record NetworkAddressSnapshot(bool IsUp, NetworkInterfaceType Type, bool HasIpv4Gateway, IReadOnlyList<IPAddress> Addresses);

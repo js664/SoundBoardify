@@ -290,7 +290,7 @@ export default function DesktopApp() {
     </aside>
     <div className="studio-main">
       <section className="control-layout" key={activeSection}>
-      <div className={`control-heading ${activeSection === 'overview' ? 'is-overview' : ''}`}><div><h1>{sectionCopy[0]}</h1>{sectionCopy[1] && <p>{sectionCopy[1]}</p>}</div>{activeSection === 'overview' && <button type="button" className="open-soundboard" onClick={async () => { try { await window.SimplySoundDesktop?.openSoundboard(); } catch (error) { setToast(error.message || 'Could not open the soundboard.'); } }}><span>Open soundboard</span><Icon name="arrow" size={14}/></button>}</div>
+      <div className={`control-heading ${activeSection === 'overview' ? 'is-overview' : ''}`}><div><h1>{sectionCopy[0]}</h1>{sectionCopy[1] && <p>{sectionCopy[1]}</p>}</div>{activeSection === 'overview' && <a className="open-soundboard" href={`${window.location.origin}/`} target="_blank" rel="noreferrer" aria-label="Open soundboard in your browser"><span>Open soundboard</span><Icon name="arrow" size={14}/></a>}</div>
       {!settings ? <div className="desktop-loading">Connecting to SimplySound…</div> : <>
         {activeSection === 'overview' && <>
         <section className="connect-panel">

@@ -15,6 +15,18 @@ function isNewerVersion(currentVersion, latestVersion) {
   return false;
 }
 
+function selectNewestRelease(releases) {
+  if (!Array.isArray(releases)) throw new TypeError('GitHub release list must be an array.');
+  let newest = null;
+  for (const release of releases) {
+    if (!release || release.draft === true || typeof release.tag_name !== 'string' || !isSimplySoundReleaseUrl(release.html_url)) continue;
+    try { versionParts(release.tag_name); }
+    catch { continue; }
+    if (!newest || isNewerVersion(newest.tag_name, release.tag_name)) newest = release;
+  }
+  return newest;
+}
+
 function isSimplySoundReleaseUrl(value) {
   try {
     const url = new URL(value);
@@ -33,4 +45,4 @@ function isSimplySoundReleaseAssetUrl(value) {
   }
 }
 
-module.exports = { isNewerVersion, isSimplySoundReleaseAssetUrl, isSimplySoundReleaseUrl };
+module.exports = { isNewerVersion, isSimplySoundReleaseAssetUrl, isSimplySoundReleaseUrl, selectNewestRelease };

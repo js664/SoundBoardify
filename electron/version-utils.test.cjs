@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
-const { isNewerVersion, isSimplySoundReleaseAssetUrl, isSimplySoundReleaseUrl } = require('./version-utils.cjs');
+const { isNewerVersion, isSimplySoundReleaseAssetUrl, isSimplySoundReleaseUrl, selectNewestRelease } = require('./version-utils.cjs');
 
 test('compares release versions by numeric segments', () => {
   assert.equal(isNewerVersion('1.9.9', 'v1.10.0'), true);
@@ -27,4 +27,23 @@ test('accepts only SimplySound release links on GitHub HTTPS', () => {
   assert.equal(isSimplySoundReleaseUrl('https://example.com/js664/SimplySound/releases/tag/v1.2.0'), false);
   assert.equal(isSimplySoundReleaseUrl('http://github.com/js664/SimplySound/releases/tag/v1.2.0'), false);
   assert.equal(isSimplySoundReleaseUrl('https://github.com/other/repo/releases/tag/v1.2.0'), false);
+});
+
+test('selects the newest published release, including Early Beta prereleases', () => {
+  const release = (tag_name, options = {}) => ({
+    tag_name,
+    html_url: `https://github.com/js664/SimplySound/releases/tag/${tag_name}`,
+    prerelease: true,
+    ...options,
+  });
+  const newest = selectNewestRelease([
+    release('v1.0.0'),
+    release('v1.0.1'),
+    release('v9.0.0', { draft: true }),
+    release('main'),
+    { tag_name: 'v8.0.0', html_url: 'https://github.com/someone/else/releases/tag/v8.0.0' },
+  ]);
+  assert.equal(newest.tag_name, 'v1.0.1');
+  assert.equal(selectNewestRelease([]), null);
+  assert.throws(() => selectNewestRelease({}), /array/);
 });

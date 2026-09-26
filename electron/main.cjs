@@ -4,10 +4,10 @@ const { promisify } = require('node:util');
 const fs = require('node:fs');
 const path = require('node:path');
 const net = require('node:net');
-const { isNewerVersion, isSimplySoundReleaseAssetUrl, isSimplySoundReleaseUrl } = require('./version-utils.cjs');
+const { isNewerVersion, isSimplySoundReleaseAssetUrl, isSimplySoundReleaseUrl, selectNewestRelease } = require('./version-utils.cjs');
 const { createMarketplaceBridge } = require('./marketplace-bridge.cjs');
 const { buildFirewallCommand } = require('./firewall-command.cjs');
-const { buildSoundboardUrl } = require('./soundboard-link.cjs');
+const { isSoundboardWindowTarget } = require('./soundboard-link.cjs');
 
 app.setName('SimplySound');
 app.setAppUserModelId('com.simplysound.desktop');
@@ -83,12 +83,6 @@ async function preparePackagedBackend() {
   await fs.promises.rename(staged, runtime);
   await removeObsoleteRuntime();
   return path.join(runtime, 'VRSoundboard.exe');
-}
-function isPrivateHost(host) {
-  if (host === 'localhost') return true;
-  if (net.isIP(host) !== 4) return false;
-  const [a, b] = host.split('.').map(Number);
-  return a === 10 || a === 192 && b === 168 || a === 172 && b >= 16 && b <= 31 || a === 169 && b === 254 || a === 100 && b >= 64 && b <= 127;
 }
 async function waitForServer(timeoutMs = 30000) {
   const deadline = Date.now() + timeoutMs;
@@ -178,10 +172,12 @@ async function createWindow(port) {
   mainWindow.once('ready-to-show', () => mainWindow.show());
   mainWindow.on('closed', () => { mainWindow = null; });
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    try {
-      const target = new URL(url);
-      if (['http:', 'https:'].includes(target.protocol) && isPrivateHost(target.hostname)) void shell.openExternal(url);
-    } catch {}
+    if (isSoundboardWindowTarget(appOrigin, url)) {
+      void shell.openExternal(url).catch(error => {
+        console.error('Could not open the SimplySound soundboard:', error);
+        dialog.showErrorBox('Could not open soundboard', 'SimplySound could not open the soundboard in your browser. Check that a default browser is installed, then try again.');
+      });
+    }
     return { action: 'deny' };
   });
   mainWindow.webContents.on('will-navigate', (event, url) => {
@@ -238,12 +234,6 @@ ipcMain.handle('SimplySound:app-version', event => {
   return app.getVersion();
 });
 
-ipcMain.handle('SimplySound:open-soundboard', async event => {
-  if (!mainWindow || event.sender !== mainWindow.webContents || !appOrigin) throw new Error('The soundboard is not ready yet.');
-  await shell.openExternal(buildSoundboardUrl(appOrigin));
-  return true;
-});
-
 ipcMain.handle('SimplySound:hotkey-status', event => {
   if (!mainWindow || event.sender !== mainWindow.webContents) throw new Error('Hotkey status is only available in SimplySound.');
   return { active: registeredHotkeys.size, unavailable: unavailableHotkeys };
@@ -252,14 +242,14 @@ ipcMain.handle('SimplySound:hotkey-status', event => {
 ipcMain.handle('SimplySound:check-updates', async event => {
   if (!mainWindow || event.sender !== mainWindow.webContents) throw new Error('Update checks are only available in SimplySound.');
   const currentVersion = app.getVersion();
-  const response = await fetch('https://api.github.com/repos/js664/SimplySound/releases/latest', {
-    headers: { Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'SimplySound' },
+  const response = await fetch('https://api.github.com/repos/js664/SimplySound/releases?per_page=100', {
+    headers: { Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2026-03-10', 'User-Agent': 'SimplySound' },
     signal: AbortSignal.timeout(8000),
   });
   if (response.status === 404) return { currentVersion, latestVersion: null, updateAvailable: false, state: 'no-release' };
   if (!response.ok) throw new Error(response.status === 403 ? 'GitHub update checks are temporarily rate-limited.' : `GitHub update check failed (${response.status}).`);
-  const release = await response.json();
-  if (typeof release.tag_name !== 'string' || !isSimplySoundReleaseUrl(release.html_url)) throw new Error('GitHub returned invalid release information.');
+  const release = selectNewestRelease(await response.json());
+  if (!release) return { currentVersion, latestVersion: null, updateAvailable: false, state: 'no-release' };
   const latestVersion = release.tag_name.replace(/^v/i, '');
   const updateAvailable = isNewerVersion(currentVersion, release.tag_name);
   return {
