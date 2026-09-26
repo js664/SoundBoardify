@@ -5,7 +5,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$group = 'Soundboardify Web UI'
+$group = 'SimplySound Web UI'
 $remoteAddresses = @('LocalSubnet')
 if ($TailscaleAccess) {
     $remoteAddresses += '100.64.0.0/10'
@@ -13,7 +13,7 @@ if ($TailscaleAccess) {
 
 Get-NetFirewallRule -Group $group -ErrorAction SilentlyContinue | Remove-NetFirewallRule
 New-NetFirewallRule `
-    -DisplayName 'Soundboardify Web UI' `
+    -DisplayName 'SimplySound Web UI' `
     -Group $group `
     -Direction Inbound `
     -Action Allow `

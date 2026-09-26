@@ -7,6 +7,8 @@ public sealed class Sound
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Name { get; set; } = "New sound";
     public string SourceFilename { get; set; } = "";
+    public string? SourceProvider { get; set; }
+    public string? SourceUrl { get; set; }
     public string StoredFilename { get; set; } = "";
     public int SortOrder { get; set; }
     // Kept for backward-compatible imports/edits. Playback now uses OutputGain.

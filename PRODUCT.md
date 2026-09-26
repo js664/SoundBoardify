@@ -1,6 +1,6 @@
 # Product context
 
-Soundboardify is a self-hosted Windows soundboard with a desktop library and a phone controller for the same local network. Users import and organize sounds on the PC, then trigger them from either the desktop or a phone. Sound effects play through the user's chosen output; local monitoring is optional and has its own output choice. Both outputs follow the Windows default playback device until the user selects another one. VRChat and Steam Link are optional use cases, not product requirements.
+SimplySound is a self-hosted Windows soundboard with a desktop library and a phone controller for the same local network. Users import and organize sounds on the PC, then trigger them from either the desktop or a phone. Sound effects play through the user's chosen output; local monitoring is optional and has its own output choice. Both outputs follow the Windows default playback device until the user selects another one. VRChat and Steam Link are optional use cases, not product requirements.
 
 The PC desktop app is the setup and library management surface. The phone browser is a fast remote control on the same private LAN or Tailscale network. Success means a first-time user can launch the app, open its phone link, import an audio file, and play it through the selected output. Keep audio routing explicit and never silently change Windows device defaults.
 

@@ -57,7 +57,7 @@ jobs:
         working-directory: electron
 
       - name: Test audio and application behavior
-        run: dotnet test tests/SoundBoardify.Tests/SoundBoardify.Tests.csproj -c Release -r win-x64
+        run: dotnet test tests/SimplySound.Tests/SimplySound.Tests.csproj -c Release -r win-x64
 
       - name: Build Windows installer and portable app
         run: npm run dist
@@ -66,9 +66,9 @@ jobs:
       - name: Upload Windows releases
         uses: actions/upload-artifact@v4
         with:
-          name: Soundboardify-Windows-x64
+          name: SimplySound-Windows-x64
           path: |
-            dist-electron/Soundboardify-*-Setup.exe
-            dist-electron/Soundboardify-*-Windows.exe
+            dist-electron/SimplySound-*-Setup.exe
+            dist-electron/SimplySound-*-Windows.exe
           if-no-files-found: error
           retention-days: 14

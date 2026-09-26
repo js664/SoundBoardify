@@ -1,14 +1,14 @@
 {
-  "name": "soundboardify-desktop",
-  "version": "1.0.2",
+  "name": "simplysound-desktop",
+  "version": "1.0.0",
   "description": "Open-source Windows soundboard with a phone-controlled web UI",
-  "author": "Soundboardify contributors",
+  "author": "SimplySound contributors",
   "license": "MIT",
   "main": "main.cjs",
   "private": true,
   "scripts": {
     "start": "electron .",
-    "test": "node --test version-utils.test.cjs",
+    "test": "node --test *.test.cjs",
     "build:icon": "node make-icon.cjs",
     "build:ui": "npm --prefix ../webui ci && npm --prefix ../webui run build",
     "build:backend": "node clean-backend-stage.cjs && dotnet publish ../VRSoundboard.csproj -c Release -r win-x64 --self-contained true -o ../obj/electron-backend && node write-backend-manifest.cjs",
@@ -16,8 +16,8 @@
     "dist": "npm run build && electron-builder --win nsis portable"
   },
   "build": {
-    "appId": "com.soundboardify.desktop",
-    "productName": "Soundboardify",
+    "appId": "com.simplysound.desktop",
+    "productName": "SimplySound",
     "asar": true,
     "directories": {
       "output": "../dist-electron"
@@ -25,6 +25,7 @@
     "files": [
       "main.cjs",
       "preload.cjs",
+      "marketplace-bridge.cjs",
       "version-utils.cjs",
       "package.json"
     ],
@@ -48,7 +49,7 @@
         ]
       },
       {
-        "from": "soundboardify.ico",
+        "from": "SimplySound.ico",
         "to": "app-icon.ico"
       },
       {
@@ -57,7 +58,7 @@
       }
     ],
     "win": {
-      "icon": "soundboardify.ico",
+      "icon": "SimplySound.ico",
       "target": [
         {
           "target": "nsis",
@@ -74,10 +75,10 @@
       ]
     },
     "portable": {
-      "artifactName": "Soundboardify-${version}-Windows.${ext}"
+      "artifactName": "SimplySound-${version}-Windows.${ext}"
     },
     "nsis": {
-      "artifactName": "Soundboardify-${version}-Setup.${ext}",
+      "artifactName": "SimplySound-${version}-Setup.${ext}",
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,

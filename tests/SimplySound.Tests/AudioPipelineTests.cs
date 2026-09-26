@@ -6,7 +6,7 @@ using NAudio.Wave;
 using VRSoundboard;
 using Xunit;
 
-namespace SoundBoardify.Tests;
+namespace SimplySound.Tests;
 
 public sealed class AudioPipelineTests
 {
@@ -32,7 +32,7 @@ public sealed class AudioPipelineTests
     [Fact]
     public async Task SoundLibraryPreventsAssigningOneHotkeyToMultipleSounds()
     {
-        var localAppData = Path.Combine(Path.GetTempPath(), "Soundboardify-hotkey-test-" + Guid.NewGuid().ToString("N"));
+        var localAppData = Path.Combine(Path.GetTempPath(), "SimplySound-hotkey-test-" + Guid.NewGuid().ToString("N"));
         var firstPath = Path.Combine(localAppData, "first.wav");
         var secondPath = Path.Combine(localAppData, "second.wav");
         try
@@ -58,7 +58,7 @@ public sealed class AudioPipelineTests
         finally
         {
             SqliteConnection.ClearAllPools();
-            if (Directory.Exists(localAppData) && Path.GetFileName(localAppData).StartsWith("Soundboardify-hotkey-test-", StringComparison.Ordinal))
+            if (Directory.Exists(localAppData) && Path.GetFileName(localAppData).StartsWith("SimplySound-hotkey-test-", StringComparison.Ordinal))
                 Directory.Delete(localAppData, recursive: true);
         }
     }
@@ -231,12 +231,14 @@ public sealed class RuntimeBehaviorTests
         Assert.DoesNotContain("pairingToken", json);
     }
 
-    [Fact]
-    public void LegacyLibraryMigratesIntoAnAlreadyCreatedEmptyAppFolder()
+    [Theory]
+    [InlineData("Soundboardify")]
+    [InlineData("VRSoundboard")]
+    public void LegacyLibraryMigratesIntoAnAlreadyCreatedEmptyAppFolder(string legacyFolderName)
     {
-        var localAppData = Path.Combine(Path.GetTempPath(), "Soundboardify-storage-test-" + Guid.NewGuid().ToString("N"));
-        var legacy = Path.Combine(localAppData, "VRSoundboard");
-        var current = Path.Combine(localAppData, "Soundboardify");
+        var localAppData = Path.Combine(Path.GetTempPath(), "SimplySound-storage-test-" + Guid.NewGuid().ToString("N"));
+        var legacy = Path.Combine(localAppData, legacyFolderName);
+        var current = Path.Combine(localAppData, "SimplySound");
         try
         {
             var legacyDatabase = Path.Combine(legacy, "database");
@@ -274,7 +276,7 @@ public sealed class RuntimeBehaviorTests
         finally
         {
             SqliteConnection.ClearAllPools();
-            if (Directory.Exists(localAppData) && Path.GetFileName(localAppData).StartsWith("Soundboardify-storage-test-", StringComparison.Ordinal))
+            if (Directory.Exists(localAppData) && Path.GetFileName(localAppData).StartsWith("SimplySound-storage-test-", StringComparison.Ordinal))
                 Directory.Delete(localAppData, recursive: true);
         }
     }

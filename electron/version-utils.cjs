@@ -15,22 +15,22 @@ function isNewerVersion(currentVersion, latestVersion) {
   return false;
 }
 
-function isSoundboardifyReleaseUrl(value) {
+function isSimplySoundReleaseUrl(value) {
   try {
     const url = new URL(value);
-    return url.protocol === 'https:' && url.hostname === 'github.com' && /^\/js664\/SoundBoardify\/releases\/(?:tag|latest)\/?[^/]*$/i.test(url.pathname);
+    return url.protocol === 'https:' && url.hostname === 'github.com' && /^\/js664\/SimplySound\/releases\/(?:tag|latest)\/?[^/]*$/i.test(url.pathname);
   } catch {
     return false;
   }
 }
 
-function isSoundboardifyReleaseAssetUrl(value) {
+function isSimplySoundReleaseAssetUrl(value) {
   try {
     const url = new URL(value);
-    return url.protocol === 'https:' && url.hostname === 'github.com' && /^\/js664\/SoundBoardify\/releases\/download\/v?\d+\.\d+\.\d+\/Soundboardify-[^/]+\.exe$/i.test(url.pathname);
+    return url.protocol === 'https:' && url.hostname === 'github.com' && /^\/js664\/SimplySound\/releases\/download\/v?\d+\.\d+\.\d+\/SimplySound-[^/]+\.exe$/i.test(url.pathname);
   } catch {
     return false;
   }
 }
 
-module.exports = { isNewerVersion, isSoundboardifyReleaseAssetUrl, isSoundboardifyReleaseUrl };
+module.exports = { isNewerVersion, isSimplySoundReleaseAssetUrl, isSimplySoundReleaseUrl };

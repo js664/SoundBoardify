@@ -19,7 +19,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Remove="tests/**/*.cs" />
-    <InternalsVisibleTo Include="SoundBoardify.Tests" />
+    <InternalsVisibleTo Include="SimplySound.Tests" />
     <Content Remove="**\*" />
     <Content Include="Web\**\*" CopyToOutputDirectory="PreserveNewest" />
     <Resource Include="assets\logo.png" />

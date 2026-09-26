@@ -14,13 +14,14 @@ public sealed class Storage
     public Storage(string? localAppDataPath = null)
     {
         var localAppData = localAppDataPath ?? Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        var current = Path.Combine(localAppData, "Soundboardify");
-        var legacy = Path.Combine(localAppData, "VRSoundboard");
-        if (Directory.Exists(legacy))
+        var current = Path.Combine(localAppData, "SimplySound");
+        // Keep existing libraries intact across the Soundboardify → SimplySound rebrand.
+        foreach (var legacy in new[] { Path.Combine(localAppData, "Soundboardify"), Path.Combine(localAppData, "VRSoundboard") })
         {
+            if (!Directory.Exists(legacy)) continue;
             try { MigrateLegacyDataRoot(current, legacy); }
-            catch (IOException) { current = legacy; }
-            catch (UnauthorizedAccessException) { current = legacy; }
+            catch (IOException) { if (!Directory.Exists(current)) current = legacy; }
+            catch (UnauthorizedAccessException) { if (!Directory.Exists(current)) current = legacy; }
         }
         Root = current;
     }

@@ -6,7 +6,7 @@ webui/node_modules/
 webui/dist/
 webui/*-review.png
 electron/node_modules/
-electron/soundboardify.ico
+electron/SimplySound.ico
 electron/.square-icon.png
 dist-electron/
 Web/

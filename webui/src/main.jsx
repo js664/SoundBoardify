@@ -9,14 +9,15 @@ import './style.css';
 
 const DEFAULT_ART = '/assets/logo.png';
 const token = new URLSearchParams(location.search).get('token');
-const densityStops = (total) => [...new Set([.25, .5, .75, 1].map((ratio) => Math.max(1, Math.ceil(total * ratio))))];
+const densityStops = (total, fitLimit = total) => [...new Set([.25, .5, .75, 1].map((ratio) => Math.min(fitLimit, Math.max(1, Math.ceil(total * ratio)))))];
 
 async function api(path, options = {}) {
   const headers = new Headers(options.headers || {});
   if (token) headers.set('X-Pairing-Token', token);
   const response = await fetch(path, { ...options, headers });
   if (!response.ok) {
-    const detail = await response.text();
+    let detail = await response.text();
+    try { const problem = JSON.parse(detail); detail = problem.detail || problem.title || problem.message || detail; } catch {}
     throw new Error(detail || `Request failed (${response.status})`);
   }
   if (response.status === 204) return null;
@@ -35,8 +36,16 @@ function Glyph({ name, size = 20 }) {
     trash: <><path d="M4 7h16M10 11v6m4-6v6M6 7l1 13h10l1-13M9 7V4h6v3"/></>,
     close: <><path d="m18 6-12 12M6 6l12 12"/></>,
     sound: <><path d="M11 5 6 9H3v6h3l5 4zM15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></>,
+    music: <><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></>,
     arrange: <><path d="M8 5H4m0 0 2.5-2.5M4 5l2.5 2.5M16 19h4m0 0-2.5-2.5M20 19l-2.5 2.5M4 12h16"/></>,
     chevron: <><path d="m6 9 6 6 6-6"/></>,
+    search: <><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 4.5 4.5"/></>,
+    play: <><path d="m8 5 11 7-11 7z" fill="currentColor" stroke="none"/></>,
+    pause: <><path d="M8 5h3v14H8zM15 5h3v14h-3z" fill="currentColor" stroke="none"/></>,
+    download: <><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 17v3h14v-3"/></>,
+    globe: <><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></>,
+    upload: <><path d="M12 16V4m0 0L8 8m4-4 4 4M5 15v5h14v-5"/></>,
+    external: <><path d="M14 4h6v6m0-6-9 9"/><path d="M18 13v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h5"/></>,
   };
   return <svg {...common}>{paths[name]}</svg>;
 }
@@ -57,6 +66,7 @@ function App() {
   const [densityOpen, setDensityOpen] = useState(false);
   const [volumeOpenId, setVolumeOpenId] = useState(null);
   const [gridLayout, setGridLayout] = useState({ columns: 2, tileHeight: 174 });
+  const [fitLimit, setFitLimit] = useState(8);
   const [dragState, setDragState] = useState(null);
   const [editing, setEditing] = useState(null);
   const [toast, setToast] = useState('');
@@ -81,6 +91,51 @@ function App() {
   const [recordingHotkey, setRecordingHotkey] = useState(false);
   const [imageFile, setImageFile] = useState(null);
   const [preview, setPreview] = useState('');
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [marketplaceOpen, setMarketplaceOpen] = useState(false);
+  const [marketplaceQuery, setMarketplaceQuery] = useState('');
+  const [marketplaceResults, setMarketplaceResults] = useState([]);
+  const [marketplaceLoading, setMarketplaceLoading] = useState(false);
+  const [marketplaceError, setMarketplaceError] = useState('');
+  const [marketplaceRetry, setMarketplaceRetry] = useState(0);
+  const [previewId, setPreviewId] = useState(null);
+  const [installingId, setInstallingId] = useState(null);
+  const [installedIds, setInstalledIds] = useState(() => new Set());
+  const [installErrors, setInstallErrors] = useState({});
+  const marketplaceDialogRef = useRef(null);
+  const addMenuRef = useRef(null);
+  const previewAudioRef = useRef(null);
+
+  useEffect(() => {
+    if (!marketplaceOpen) return undefined;
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      setMarketplaceLoading(true);
+      setMarketplaceError('');
+      api(`/api/marketplace/search?q=${encodeURIComponent(marketplaceQuery)}`, { signal: controller.signal })
+        .then((results) => setMarketplaceResults(Array.isArray(results) ? results : []))
+        .catch((error) => { if (error.name !== 'AbortError') { setMarketplaceResults([]); setMarketplaceError(error.message || 'Could not load sounds.'); } })
+        .finally(() => { if (!controller.signal.aborted) setMarketplaceLoading(false); });
+    }, marketplaceQuery.trim() ? 240 : 0);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [marketplaceOpen, marketplaceQuery, marketplaceRetry]);
+
+  useEffect(() => {
+    const node = marketplaceDialogRef.current;
+    if (marketplaceOpen && node && !node.open) node.showModal();
+    if (!marketplaceOpen && node?.open) node.close();
+  }, [marketplaceOpen]);
+
+  useEffect(() => () => { previewAudioRef.current?.pause(); }, []);
+
+  useEffect(() => {
+    if (!addMenuOpen) return undefined;
+    const dismiss = (event) => { if (!addMenuRef.current?.contains(event.target)) setAddMenuOpen(false); };
+    const onKeyDown = (event) => { if (event.key === 'Escape') setAddMenuOpen(false); };
+    document.addEventListener('pointerdown', dismiss);
+    document.addEventListener('keydown', onKeyDown);
+    return () => { document.removeEventListener('pointerdown', dismiss); document.removeEventListener('keydown', onKeyDown); };
+  }, [addMenuOpen]);
 
   const updatePlayback = useCallback((state) => {
     playbackRef.current = state;
@@ -128,12 +183,12 @@ function App() {
     const previousCount = previousSoundCountRef.current;
     previousSoundCountRef.current = sounds.length;
     if (!sounds.length) { setDensity(0); return; }
-    const options = densityStops(sounds.length);
+    const options = densityStops(sounds.length, fitLimit);
     setDensity((current) => {
       if (!current || current === previousCount || previousCount === 0 && !options.includes(current)) return sounds.length;
       return options.reduce((nearest, option) => Math.abs(option - current) < Math.abs(nearest - current) ? option : nearest, options[0]);
     });
-  }, [sounds.length]);
+  }, [sounds.length, fitLimit]);
 
   useEffect(() => {
     if (!recordingHotkey) return;
@@ -167,14 +222,20 @@ function App() {
       const gap = viewWidth <= 520 ? 11 : viewWidth <= 760 ? 12 : 18;
       const minimumTileWidth = viewWidth <= 520 ? 140 : viewWidth <= 760 ? 158 : 198;
       const columns = Math.max(1, Math.min(6, Math.floor((width + gap) / (minimumTileWidth + gap))));
-      const visibleCount = Math.max(1, Math.min(sounds.length || density || 1, density || sounds.length || 1));
-      const rows = Math.ceil(visibleCount / columns);
       const densityHeight = densityRef.current?.getBoundingClientRect().height ?? (densityOpen ? 76 : 0);
       const topbarHeight = topbarRef.current?.getBoundingClientRect().height || 64;
       const selectionHeight = selectionBarRef.current?.getBoundingClientRect().height || 0;
       const gridPaddingTop = parseFloat(getComputedStyle(gridRef.current || shell).paddingTop) || 0;
-      const heightForRow = Math.max(44, (viewHeight - paddingTop - paddingBottom - topbarHeight - densityHeight - selectionHeight - gridPaddingTop - gap * (rows - 1)) / rows);
+      const availableGridHeight = Math.max(76, viewHeight - paddingTop - paddingBottom - topbarHeight - densityHeight - selectionHeight - gridPaddingTop);
       const tileWidth = (width - gap * (columns - 1)) / columns;
+      const minTileHeight = viewWidth <= 520 ? 82 : viewWidth <= 760 ? 96 : 120;
+      const maxRows = Math.max(1, Math.floor((availableGridHeight + gap) / (minTileHeight + gap)));
+      const maxVisible = Math.max(columns, columns * maxRows);
+      const nextFitLimit = sounds.length ? Math.min(sounds.length, maxVisible) : maxVisible;
+      setFitLimit((before) => before === nextFitLimit ? before : nextFitLimit);
+      const visibleCount = loading ? nextFitLimit : Math.max(1, Math.min(sounds.length || density || 1, density || sounds.length || 1, nextFitLimit));
+      const rows = Math.ceil(visibleCount / columns);
+      const heightForRow = Math.max(44, (viewHeight - paddingTop - paddingBottom - topbarHeight - densityHeight - selectionHeight - gridPaddingTop - gap * (rows - 1)) / rows);
       const tileHeight = Math.min(heightForRow, tileWidth * 1.08);
       setGridLayout((before) => before.columns === columns && Math.abs(before.tileHeight - tileHeight) < 1 ? before : { columns, tileHeight });
     };
@@ -188,7 +249,9 @@ function App() {
     if (selectionBarRef.current) observer.observe(selectionBarRef.current);
     if (gridRef.current) observer.observe(gridRef.current);
     return () => { window.removeEventListener('resize', measure); window.visualViewport?.removeEventListener('resize', measure); observer.disconnect(); };
-  }, [density, densityOpen, selectionMode, selected.size, arrangeMode, sounds.length]);
+  }, [density, densityOpen, selectionMode, selected.size, arrangeMode, sounds.length, loading]);
+
+  const densityOptions = densityStops(sounds.length || fitLimit, fitLimit);
 
   useEffect(() => { if (density > 0) try { localStorage.setItem('soundboard.visibleCount', String(density)); } catch {} }, [density]);
 
@@ -294,6 +357,37 @@ function App() {
     } finally { setSaving(false); event.target.value = ''; }
   }
 
+  function toggleMarketplacePreview(sound) {
+    let audio = previewAudioRef.current;
+    if (previewId === sound.id && audio && !audio.paused) {
+      audio.pause();
+      audio.currentTime = 0;
+      setPreviewId(null);
+      return;
+    }
+    if (audio) { audio.pause(); audio.currentTime = 0; }
+    audio = new Audio(sound.audioUrl);
+    audio.volume = 0.75;
+    audio.preload = 'none';
+    audio.onended = () => setPreviewId(null);
+    audio.onerror = () => { setPreviewId(null); setMarketplaceError('This preview could not be played. Try another sound.'); };
+    previewAudioRef.current = audio;
+    setPreviewId(sound.id);
+    audio.play().catch(() => { setPreviewId(null); setMarketplaceError('This preview could not be played. Try another sound.'); });
+  }
+
+  async function installMarketplaceSound(sound) {
+    setInstallErrors((current) => { const next = { ...current }; delete next[sound.id]; return next; });
+    setInstallingId(sound.id);
+    try {
+      await api(`/api/marketplace/${encodeURIComponent(sound.id)}/install`, { method: 'POST' });
+      setInstalledIds((current) => new Set(current).add(sound.id));
+      await refresh();
+      setToast(`${sound.title} added to your soundboard`);
+    } catch (error) { setInstallErrors((current) => ({ ...current, [sound.id]: error.message || 'Could not add this sound.' })); }
+    finally { setInstallingId(null); }
+  }
+
   function openEditor(sound) {
     setOptionsOpen(false);
     setEditing(sound);
@@ -389,18 +483,24 @@ function App() {
   return <main className="app-shell" ref={shellRef} onPointerDown={(event) => { if (!event.target.closest('.sound-volume, .volume-trigger')) setVolumeOpenId(null); }}>
     <header className="topbar" ref={topbarRef}>
       <div className="top-actions">
-        <button className="select-button arrange-button" type="button" aria-pressed={arrangeMode} onClick={() => { setArrangeMode((value) => !value); setSelectionMode(false); setSelected(new Set()); setVolumeOpenId(null); }}>
-          <Glyph name="arrange" size={17}/><span>{arrangeMode ? 'Done' : 'Arrange'}</span>
+        <button className="select-button arrange-button icon-action" type="button" aria-label={arrangeMode ? 'Finish arranging sounds' : 'Arrange sounds'} title={arrangeMode ? 'Finish arranging' : 'Arrange sounds'} aria-pressed={arrangeMode} onClick={() => { setArrangeMode((value) => !value); setSelectionMode(false); setSelected(new Set()); setVolumeOpenId(null); }}>
+          <Glyph name="arrange" size={19}/><span>{arrangeMode ? 'Done' : 'Arrange'}</span>
         </button>
-        <button className="select-button" type="button" aria-pressed={selectionMode} onClick={toggleSelection}>
+        <button className="select-button icon-action" type="button" aria-label={selectionMode ? 'Finish selecting sounds' : 'Select sounds'} title={selectionMode ? 'Finish selecting' : 'Select sounds'} aria-pressed={selectionMode} onClick={toggleSelection}>
           {selectionMode ? <><Glyph name="close" size={17}/><span>Done</span></> : <><Glyph name="check" size={17}/><span>Select</span></>}
         </button>
-        <button className="select-button density-toggle" type="button" aria-expanded={densityOpen} aria-controls="density-panel" onClick={() => setDensityOpen((open) => !open)}>
+        <button className="select-button density-toggle icon-action" type="button" aria-label={`${density} sounds on screen; change visible count`} title="Visible sounds" aria-expanded={densityOpen} aria-controls="density-panel" onClick={() => setDensityOpen((open) => !open)}>
           <span className="density-toggle-count">{density}</span><span className="density-toggle-label">On screen</span><Glyph name="chevron" size={15}/>
         </button>
-        <button className="add-button" type="button" aria-label="Add a sound" title="Add a sound" disabled={saving} onClick={() => fileRef.current?.click()}>
-          <Glyph name="plus" size={22}/>
-        </button>
+        <div className="add-menu-wrap" ref={addMenuRef}>
+          <button className="add-button" type="button" aria-label="Add sounds" aria-expanded={addMenuOpen} aria-controls="add-sound-menu" title="Add sounds" disabled={saving} onClick={() => setAddMenuOpen((open) => !open)}>
+            <Glyph name="plus" size={22}/>
+          </button>
+          {addMenuOpen && <div className="add-sound-menu" id="add-sound-menu" role="menu">
+            <button type="button" role="menuitem" onClick={() => { setAddMenuOpen(false); fileRef.current?.click(); }}><span className="menu-action-icon"><Glyph name="upload" size={18}/></span><span><strong>Upload locally</strong><small>Choose audio from this device</small></span></button>
+            <button type="button" role="menuitem" onClick={() => { setAddMenuOpen(false); setMarketplaceQuery(''); setMarketplaceOpen(true); }}><span className="menu-action-icon"><Glyph name="globe" size={18}/></span><span><strong>Browse marketplace</strong><small>Discover sounds from MyInstants</small></span></button>
+          </div>}
+        </div>
         <input ref={fileRef} className="visually-hidden" type="file" multiple accept="audio/*,.mp3,.wav,.m4a,.aac,.wma" onChange={addAudio} />
       </div>
     </header>
@@ -408,9 +508,9 @@ function App() {
     <div id="density-panel" className={`density-disclosure ${densityOpen ? 'is-open' : ''}`} aria-hidden={!densityOpen} inert={!densityOpen}>
       <section className="density-control" ref={densityRef} aria-label="Visible sound buttons">
         <div className="density-heading"><span>On screen</span><span className="density-readout">{density} <small>buttons</small></span></div>
-        <div className="density-segments" role="group" aria-label="Choose how many sound buttons fit on screen" style={{ '--segment-index': densityStops(sounds.length).indexOf(density), '--segment-count': densityStops(sounds.length).length }}>
+        <div className="density-segments" role="group" aria-label="Choose how many sound buttons fit on screen" style={{ '--segment-index': densityOptions.indexOf(density), '--segment-count': densityOptions.length }}>
           <span className="density-thumb" />
-          {densityStops(sounds.length).map((count) => <button key={count} type="button" className={density === count ? 'active' : ''} aria-pressed={density === count} onClick={() => setDensity(count)}><span>{count}</span></button>)}
+          {densityOptions.map((count) => <button key={count} type="button" className={density === count ? 'active' : ''} aria-pressed={density === count} onClick={() => setDensity(count)}><span>{count}</span></button>)}
         </div>
       </section>
     </div>
@@ -422,7 +522,7 @@ function App() {
       </button>}
     </div>}
 
-    {loading ? <div className="loading-grid" aria-label="Loading sounds">{Array.from({ length: 6 }, (_, i) => <div key={i} className="skeleton-tile" />)}</div>
+    {loading ? <div ref={gridRef} className="loading-grid" role="status" aria-label="Loading sounds" aria-busy="true" style={{ '--grid-columns': gridLayout.columns, '--tile-height': `${gridLayout.tileHeight}px` }}>{Array.from({ length: fitLimit }, (_, i) => <div key={i} className="skeleton-tile" style={{ '--tile-index': i }}><span className="skeleton-ripple"/><Glyph name="music" size={28}/><span className="skeleton-wave"><i/><i/><i/><i/><i/></span></div>)}</div>
       : sounds.length === 0 ? <section className="empty-state">
         <img src={DEFAULT_ART} alt="" />
         <h1>Your soundboard is empty</h1>
@@ -458,7 +558,7 @@ function App() {
 
     <dialog ref={dialogRef} className="edit-dialog" onClose={() => { setEditing(null); setImageFile(null); setRecordingHotkey(false); }} onClick={(event) => { if (event.target === dialogRef.current) dialogRef.current.close(); }}>
       {editing && <form onSubmit={saveEdit}>
-        <div className="dialog-head"><div><h2>Edit sound</h2><p>Make this button yours.</p></div><button className="dialog-close" type="button" aria-label="Close editor" onClick={() => dialogRef.current?.close()}><Glyph name="close"/></button></div>
+        <div className="dialog-head"><div><h2>Edit sound</h2><p>Make this button yours.{editing.sourceUrl && <> <a className="sound-source-link" href={editing.sourceUrl} target="_blank" rel="noreferrer">From MyInstants <Glyph name="external" size={12}/></a></>}</p></div><button className="dialog-close" type="button" aria-label="Close editor" onClick={() => dialogRef.current?.close()}><Glyph name="close"/></button></div>
         <label className="artwork-picker">
           <img src={preview || editing.imageUrl || DEFAULT_ART} alt="Sound artwork preview" />
           <span className="artwork-action"><Glyph name="image" size={17}/><span>Change image</span></span>
@@ -467,7 +567,7 @@ function App() {
         <div className="form-fields">
           <label className="field">Name<input value={form.name} maxLength={100} required onChange={(event) => setForm({ ...form, name: event.target.value })}/></label>
           <label className="field">Button title<input value={form.buttonLabel} maxLength={100} placeholder="Use sound name" onChange={(event) => setForm({ ...form, buttonLabel: event.target.value })}/></label>
-          <div className="field hotkey-field"><span>Keyboard shortcut</span><small>Works globally while Soundboardify is running.</small><div className="hotkey-control"><kbd>{form.hotkey?.replaceAll('Control', 'Ctrl').replaceAll('+', ' + ') || 'Not set'}</kbd><button type="button" className={recordingHotkey ? 'is-recording' : ''} onClick={() => setRecordingHotkey(true)}>{recordingHotkey ? 'Press Ctrl + Alt + key…' : 'Record'}</button>{form.hotkey && <button type="button" className="hotkey-clear" aria-label="Clear keyboard shortcut" onClick={() => { setForm({ ...form, hotkey: '' }); setRecordingHotkey(false); }}>Clear</button>}</div></div>
+          <div className="field hotkey-field"><span>Keyboard shortcut</span><small>Works globally while SimplySound is running.</small><div className="hotkey-control"><kbd>{form.hotkey?.replaceAll('Control', 'Ctrl').replaceAll('+', ' + ') || 'Not set'}</kbd><button type="button" className={recordingHotkey ? 'is-recording' : ''} onClick={() => setRecordingHotkey(true)}>{recordingHotkey ? 'Press Ctrl + Alt + key…' : 'Record'}</button>{form.hotkey && <button type="button" className="hotkey-clear" aria-label="Clear keyboard shortcut" onClick={() => { setForm({ ...form, hotkey: '' }); setRecordingHotkey(false); }}>Clear</button>}</div></div>
           <div className={`playback-options ${optionsOpen ? 'is-open' : ''}`}>
             <button className="options-toggle" type="button" aria-expanded={optionsOpen} onClick={() => setOptionsOpen((value) => !value)}><span><strong>Playback options</strong><small>Behavior, volume and trim</small></span><Glyph name="chevron" size={18}/></button>
             {optionsOpen && <div className="option-grid">
@@ -480,6 +580,34 @@ function App() {
         </div>
         <div className="dialog-actions"><button className="remove-art" type="button" onClick={resetArtwork}>Use default image</button><button className="delete-one" type="button" onClick={deleteOne}>Delete</button><button className="save-button" type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button></div>
       </form>}
+    </dialog>
+
+    <dialog ref={marketplaceDialogRef} className="marketplace-dialog" aria-labelledby="marketplace-title" onClose={() => { setMarketplaceOpen(false); previewAudioRef.current?.pause(); setPreviewId(null); }} onClick={(event) => { if (event.target === marketplaceDialogRef.current) marketplaceDialogRef.current.close(); }}>
+      <section className="marketplace-shell">
+        <header className="marketplace-header">
+          <div className="marketplace-heading"><span className="marketplace-mark"><Glyph name="sound" size={19}/></span><div><h2 id="marketplace-title">Sound marketplace</h2><p>Find a sound. Preview it. Add it to your board.</p></div></div>
+          <button className="dialog-close" type="button" aria-label="Close marketplace" onClick={() => marketplaceDialogRef.current?.close()}><Glyph name="close"/></button>
+        </header>
+        <label className="marketplace-search"><Glyph name="search" size={19}/><input type="search" value={marketplaceQuery} maxLength={80} placeholder="Search sounds…" aria-label="Search marketplace sounds" onChange={(event) => setMarketplaceQuery(event.target.value)}/>{marketplaceQuery && <button type="button" aria-label="Clear search" onClick={() => setMarketplaceQuery('')}><Glyph name="close" size={16}/></button>}</label>
+        <div className="marketplace-results-heading"><strong>{marketplaceQuery.trim() ? 'Search results' : 'Recently added'}</strong><span>{marketplaceLoading ? 'Searching…' : marketplaceResults.length ? `${marketplaceResults.length} sounds` : ''}</span></div>
+        <div className="marketplace-results" aria-live="polite" aria-busy={marketplaceLoading}>
+          {marketplaceLoading && marketplaceResults.length === 0 && <div className="marketplace-state"><span className="marketplace-spinner"/><strong>Finding good sounds</strong><small>Checking the MyInstants catalog</small></div>}
+          {!marketplaceLoading && marketplaceError && <div className="marketplace-state"><span className="marketplace-state-icon"><Glyph name="sound"/></span><strong>Marketplace unavailable</strong><small>{marketplaceError}</small><button type="button" onClick={() => setMarketplaceRetry((retry) => retry + 1)}>Try again</button></div>}
+          {!marketplaceLoading && !marketplaceError && marketplaceResults.length === 0 && <div className="marketplace-state"><span className="marketplace-state-icon"><Glyph name="search"/></span><strong>No sounds found</strong><small>Try a shorter or different search.</small></div>}
+          {marketplaceResults.map((sound, index) => {
+            const installed = installedIds.has(sound.id) || sounds.some((item) => item.sourceUrl === sound.pageUrl);
+            const previewing = previewId === sound.id;
+            return <article className={`marketplace-result ${previewing ? 'is-previewing' : ''}`} style={{ '--result-index': index }} key={sound.id}>
+              <div className="marketplace-art"><img src={DEFAULT_ART} alt=""/><span><Glyph name="sound" size={19}/></span></div>
+              <div className="marketplace-sound-info"><strong title={sound.title}>{sound.title}</strong><a href={sound.pageUrl} target="_blank" rel="noreferrer">View on MyInstants <Glyph name="external" size={12}/></a></div>
+              <button className={`marketplace-preview ${previewing ? 'is-playing' : ''}`} type="button" aria-label={`${previewing ? 'Stop preview of' : 'Preview'} ${sound.title}`} onClick={() => toggleMarketplacePreview(sound)}><Glyph name={previewing ? 'pause' : 'play'} size={17}/></button>
+              <button className={`marketplace-install ${installed ? 'is-added' : ''}`} type="button" aria-label={`${installed ? 'Added' : installingId === sound.id ? 'Adding' : 'Add'} ${sound.title}`} disabled={installed || installingId !== null} onClick={() => installMarketplaceSound(sound)}>{installed ? <Glyph name="check" size={17}/> : installingId === sound.id ? <span className="button-spinner"/> : <Glyph name="plus" size={18}/>}<span>{installed ? 'Added' : installingId === sound.id ? 'Adding' : 'Add'}</span></button>
+              {installErrors[sound.id] && <div className="marketplace-install-error" role="status" aria-live="polite">{installErrors[sound.id]}</div>}
+            </article>;
+          })}
+        </div>
+        <footer className="marketplace-footer"><span>Catalog by <a href="https://github.com/abdipr/myinstants-api" target="_blank" rel="noreferrer">abdipr / myinstants-api</a> · sounds hosted by <a href="https://www.myinstants.com/" target="_blank" rel="noreferrer">MyInstants</a></span><small>Sounds may be copyrighted. Review each source page and <a href="https://www.myinstants.com/en/terms_of_use.html" target="_blank" rel="noreferrer">MyInstants’ terms</a> before installing, using or sharing them.</small></footer>
+      </section>
     </dialog>
   </main>;
 }

@@ -19,7 +19,7 @@ async function makeIcon() {
   try {
     const { default: pngToIco } = await import('png-to-ico');
     const icon = await pngToIco(squarePath);
-    await fs.promises.writeFile(path.join(__dirname, 'soundboardify.ico'), icon);
+    await fs.promises.writeFile(path.join(__dirname, 'SimplySound.ico'), icon);
   } finally { await fs.promises.rm(squarePath, { force: true }); }
 }
 makeIcon()

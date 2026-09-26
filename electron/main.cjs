@@ -4,12 +4,23 @@ const { promisify } = require('node:util');
 const fs = require('node:fs');
 const path = require('node:path');
 const net = require('node:net');
-const { isNewerVersion, isSoundboardifyReleaseAssetUrl, isSoundboardifyReleaseUrl } = require('./version-utils.cjs');
+const { isNewerVersion, isSimplySoundReleaseAssetUrl, isSimplySoundReleaseUrl } = require('./version-utils.cjs');
+const { createMarketplaceBridge } = require('./marketplace-bridge.cjs');
 
-app.setName('Soundboardify');
-app.setAppUserModelId('com.soundboardify.desktop');
+app.setName('SimplySound');
+app.setAppUserModelId('com.simplysound.desktop');
+
+// Electron's application name determines its roaming settings directory. Copy the old
+// profile once so port, privacy, and desktop preferences survive the product rename.
+const newUserData = path.join(app.getPath('appData'), 'SimplySound');
+const previousUserData = path.join(app.getPath('appData'), 'Soundboardify');
+if (!fs.existsSync(newUserData) && fs.existsSync(previousUserData)) {
+  fs.cpSync(previousUserData, newUserData, { recursive: true, errorOnExist: true });
+}
+app.setPath('userData', newUserData);
 
 let backend;
+let marketplaceBridge;
 let mainWindow;
 let portFile;
 let activePort;
@@ -37,21 +48,21 @@ async function preparePackagedBackend() {
   }
 
   const localAppData = path.resolve(process.env.LOCALAPPDATA || app.getPath('userData'));
-  const runtime = path.join(localAppData, 'SoundboardifyRuntime', 'backend');
+  const runtime = path.join(localAppData, 'SimplySoundRuntime', 'backend');
   const relativeRuntime = path.relative(localAppData, runtime);
   if (relativeRuntime.startsWith('..') || path.isAbsolute(relativeRuntime)) throw new Error('The audio service install path is invalid.');
   const removeObsoleteRuntime = async () => {
-    const obsolete = path.join(localAppData, 'Soundboardify', 'backend');
+    const obsolete = path.join(localAppData, 'SimplySound', 'backend');
     const relativeObsolete = path.relative(localAppData, obsolete);
     if (path.resolve(obsolete) === path.resolve(runtime) || relativeObsolete.startsWith('..') || path.isAbsolute(relativeObsolete)) return;
     try {
-      const oldManifest = JSON.parse(await fs.promises.readFile(path.join(obsolete, '.soundboardify-backend.json'), 'utf8'));
+      const oldManifest = JSON.parse(await fs.promises.readFile(path.join(obsolete, '.SimplySound-backend.json'), 'utf8'));
       if (typeof oldManifest.version === 'string' && /^[a-f0-9]{64}$/i.test(oldManifest.fingerprint || '') && fs.existsSync(path.join(obsolete, 'VRSoundboard.exe'))) {
         await fs.promises.rm(obsolete, { recursive: true, force: true });
       }
     } catch {}
   };
-  const stamp = path.join(runtime, '.soundboardify-backend.json');
+  const stamp = path.join(runtime, '.SimplySound-backend.json');
   try {
     const installed = JSON.parse(await fs.promises.readFile(stamp, 'utf8'));
     if (installed.fingerprint === manifest.fingerprint && fs.existsSync(path.join(runtime, 'VRSoundboard.exe'))) {
@@ -64,7 +75,7 @@ async function preparePackagedBackend() {
   await fs.promises.mkdir(path.dirname(runtime), { recursive: true });
   await fs.promises.rm(staged, { recursive: true, force: true });
   await fs.promises.cp(source, staged, { recursive: true });
-  await fs.promises.writeFile(path.join(staged, '.soundboardify-backend.json'), JSON.stringify(manifest));
+  await fs.promises.writeFile(path.join(staged, '.SimplySound-backend.json'), JSON.stringify(manifest));
   await fs.promises.rm(runtime, { recursive: true, force: true });
   await fs.promises.rename(staged, runtime);
   await removeObsoleteRuntime();
@@ -99,7 +110,8 @@ async function startBackend() {
   portFile = path.join(app.getPath('userData'), 'backend-port.txt');
   await fs.promises.mkdir(path.dirname(portFile), { recursive: true });
   await fs.promises.rm(portFile, { force: true });
-  backend = spawn(executable, ['--electron-backend', `--electron-port-file=${portFile}`], { windowsHide: true, stdio: 'ignore' });
+  marketplaceBridge = await createMarketplaceBridge();
+  backend = spawn(executable, ['--electron-backend', `--electron-port-file=${portFile}`, `--electron-marketplace-bridge-port=${marketplaceBridge.port}`, `--electron-marketplace-bridge-token=${marketplaceBridge.token}`], { windowsHide: true, stdio: 'ignore' });
   return waitForServer();
 }
 async function refreshGlobalHotkeys() {
@@ -152,11 +164,11 @@ async function createWindow(port) {
     minWidth: 850,
     minHeight: 620,
     backgroundColor: '#10110f',
-    title: 'Soundboardify',
+    title: 'SimplySound',
     show: false,
     autoHideMenuBar: true,
     titleBarStyle: 'default',
-    icon: app.isPackaged ? path.join(process.resourcesPath, 'app-icon.ico') : path.join(__dirname, 'soundboardify.ico'),
+    icon: app.isPackaged ? path.join(process.resourcesPath, 'app-icon.ico') : path.join(__dirname, 'SimplySound.ico'),
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true, spellcheck: false },
   });
   mainWindow.once('ready-to-show', () => mainWindow.show());
@@ -175,8 +187,8 @@ async function createWindow(port) {
   await mainWindow.loadURL(`http://127.0.0.1:${port}/?desktop=1`);
 }
 
-ipcMain.handle('soundboardify:configure-firewall', async (event, options) => {
-  if (!mainWindow || event.sender !== mainWindow.webContents || !stableBackendPath) throw new Error('Firewall setup is only available from the Soundboardify desktop window.');
+ipcMain.handle('SimplySound:configure-firewall', async (event, options) => {
+  if (!mainWindow || event.sender !== mainWindow.webContents || !stableBackendPath) throw new Error('Firewall setup is only available from the SimplySound desktop window.');
   if (!Number.isInteger(activePort) || activePort < 1024 || activePort > 65535) throw new Error('The Web UI port is not ready yet.');
   const tailscaleAccess = options?.tailscaleAccess === true;
   const powershell = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
@@ -190,27 +202,27 @@ ipcMain.handle('soundboardify:configure-firewall', async (event, options) => {
   return true;
 });
 
-ipcMain.handle('soundboardify:app-version', event => {
-  if (!mainWindow || event.sender !== mainWindow.webContents) throw new Error('Version information is only available in Soundboardify.');
+ipcMain.handle('SimplySound:app-version', event => {
+  if (!mainWindow || event.sender !== mainWindow.webContents) throw new Error('Version information is only available in SimplySound.');
   return app.getVersion();
 });
 
-ipcMain.handle('soundboardify:hotkey-status', event => {
-  if (!mainWindow || event.sender !== mainWindow.webContents) throw new Error('Hotkey status is only available in Soundboardify.');
+ipcMain.handle('SimplySound:hotkey-status', event => {
+  if (!mainWindow || event.sender !== mainWindow.webContents) throw new Error('Hotkey status is only available in SimplySound.');
   return { active: registeredHotkeys.size, unavailable: unavailableHotkeys };
 });
 
-ipcMain.handle('soundboardify:check-updates', async event => {
-  if (!mainWindow || event.sender !== mainWindow.webContents) throw new Error('Update checks are only available in Soundboardify.');
+ipcMain.handle('SimplySound:check-updates', async event => {
+  if (!mainWindow || event.sender !== mainWindow.webContents) throw new Error('Update checks are only available in SimplySound.');
   const currentVersion = app.getVersion();
-  const response = await fetch('https://api.github.com/repos/js664/SoundBoardify/releases/latest', {
-    headers: { Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'Soundboardify' },
+  const response = await fetch('https://api.github.com/repos/js664/SimplySound/releases/latest', {
+    headers: { Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'SimplySound' },
     signal: AbortSignal.timeout(8000),
   });
   if (response.status === 404) return { currentVersion, latestVersion: null, updateAvailable: false, state: 'no-release' };
   if (!response.ok) throw new Error(response.status === 403 ? 'GitHub update checks are temporarily rate-limited.' : `GitHub update check failed (${response.status}).`);
   const release = await response.json();
-  if (typeof release.tag_name !== 'string' || !isSoundboardifyReleaseUrl(release.html_url)) throw new Error('GitHub returned invalid release information.');
+  if (typeof release.tag_name !== 'string' || !isSimplySoundReleaseUrl(release.html_url)) throw new Error('GitHub returned invalid release information.');
   const latestVersion = release.tag_name.replace(/^v/i, '');
   const updateAvailable = isNewerVersion(currentVersion, release.tag_name);
   return {
@@ -218,17 +230,17 @@ ipcMain.handle('soundboardify:check-updates', async event => {
     latestVersion,
     updateAvailable,
     releaseUrl: release.html_url,
-    releaseName: typeof release.name === 'string' ? release.name.slice(0, 160) : `Soundboardify ${latestVersion}`,
+    releaseName: typeof release.name === 'string' ? release.name.slice(0, 160) : `SimplySound ${latestVersion}`,
     releaseNotes: typeof release.body === 'string' ? release.body.slice(0, 6000) : '',
     releasePublishedAt: typeof release.published_at === 'string' ? release.published_at : null,
-    assets: Array.isArray(release.assets) ? release.assets.filter(asset => typeof asset.name === 'string' && /^Soundboardify-.*\.(exe)$/i.test(asset.name) && isSoundboardifyReleaseAssetUrl(asset.browser_download_url)).map(asset => ({ name: asset.name, size: asset.size })) : [],
+    assets: Array.isArray(release.assets) ? release.assets.filter(asset => typeof asset.name === 'string' && /^SimplySound-.*\.(exe)$/i.test(asset.name) && isSimplySoundReleaseAssetUrl(asset.browser_download_url)).map(asset => ({ name: asset.name, size: asset.size })) : [],
     state: updateAvailable ? 'available' : 'current',
   };
 });
 
-ipcMain.handle('soundboardify:open-release', async (event, url) => {
-  if (!mainWindow || event.sender !== mainWindow.webContents) throw new Error('Release links are only available in Soundboardify.');
-  if (!isSoundboardifyReleaseUrl(url)) throw new Error('That is not a Soundboardify GitHub release link.');
+ipcMain.handle('SimplySound:open-release', async (event, url) => {
+  if (!mainWindow || event.sender !== mainWindow.webContents) throw new Error('Release links are only available in SimplySound.');
+  if (!isSimplySoundReleaseUrl(url)) throw new Error('That is not a SimplySound GitHub release link.');
   await shell.openExternal(url);
   return true;
 });
@@ -246,12 +258,12 @@ function watchBackendPort() {
   }, 350);
 }
 
-app.on('before-quit', () => { if (portPoll) clearInterval(portPoll); if (hotkeyPoll) clearInterval(hotkeyPoll); globalShortcut.unregisterAll(); if (backend && !backend.killed) backend.kill(); });
+app.on('before-quit', () => { if (portPoll) clearInterval(portPoll); if (hotkeyPoll) clearInterval(hotkeyPoll); globalShortcut.unregisterAll(); if (backend && !backend.killed) backend.kill(); marketplaceBridge?.server.close(); });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 
 const hasLock = app.requestSingleInstanceLock();
 if (!hasLock) app.quit();
 else app.whenReady().then(async () => {
   try { const port = await startBackend(); await createWindow(port); watchBackendPort(); void refreshGlobalHotkeys(); hotkeyPoll = setInterval(() => { void refreshGlobalHotkeys(); }, 3000); }
-  catch (error) { dialog.showErrorBox('Soundboardify could not start', error.message); app.quit(); }
+  catch (error) { dialog.showErrorBox('SimplySound could not start', error.message); app.quit(); }
 });

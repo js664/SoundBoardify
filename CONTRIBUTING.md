@@ -1,11 +1,11 @@
 # Contributing
 
-Thanks for helping improve Soundboardify. Bug reports, accessibility fixes, documentation, audio compatibility, and small focused pull requests are welcome.
+Thanks for helping improve SimplySound. Bug reports, accessibility fixes, documentation, audio compatibility, and small focused pull requests are welcome.
 
 ## Before opening a pull request
 
 - Describe the user problem and the behavior you changed.
-- Run `dotnet test tests/SoundBoardify.Tests/SoundBoardify.Tests.csproj -c Release -r win-x64` on Windows.
+- Run `dotnet test tests/SimplySound.Tests/SimplySound.Tests.csproj -c Release -r win-x64` on Windows.
 - Run `npm ci` and `npm run dist` from `electron/` for changes to the packaged app or web UI.
 - Do not commit build output (`bin/`, `obj/`, `Web/`, `dist-electron/`) or personal sound files and logs.
 - Keep network access private by default for new transports, and never log pairing tokens or full paired URLs.

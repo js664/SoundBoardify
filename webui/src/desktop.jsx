@@ -9,6 +9,7 @@ async function request(path, options = {}) {
 }
 function Icon({ name, size = 18 }) {
   const paths = {
+    home: <><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/><path d="M9 21v-6h6v6"/></>,
     volume: <><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15 9a5 5 0 0 1 0 6M18 6a9 9 0 0 1 0 12"/></>,
     copy: <><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></>,
     check: <path d="m5 12 4 4L19 6"/>,
@@ -63,6 +64,7 @@ export default function DesktopApp() {
   const [releaseAssets, setReleaseAssets] = useState([]);
   const [hotkeyStatus, setHotkeyStatus] = useState({ active: 0, unavailable: [] });
   const [checkingUpdates, setCheckingUpdates] = useState(false);
+  const [activeSection, setActiveSection] = useState('overview');
   const masterTimer = useRef(null);
 
   async function refresh() {
@@ -70,7 +72,7 @@ export default function DesktopApp() {
     setSettings(nextSettings); setPortDraft(String(nextSettings.port)); setDevices(endpoints || []); setStatus(state);
   }
   const checkForUpdates = useCallback(async () => {
-    const bridge = window.soundboardifyDesktop;
+    const bridge = window.SimplySoundDesktop;
     if (!bridge?.getVersion || !bridge?.checkForUpdates) { setUpdateState('unavailable'); return; }
     setCheckingUpdates(true); setUpdateState('checking');
     try {
@@ -96,7 +98,7 @@ export default function DesktopApp() {
     return () => clearInterval(timer);
   }, [checkForUpdates]);
   useEffect(() => {
-    const refreshHotkeys = () => window.soundboardifyDesktop?.getHotkeyStatus?.().then(setHotkeyStatus).catch(() => {});
+    const refreshHotkeys = () => window.SimplySoundDesktop?.getHotkeyStatus?.().then(setHotkeyStatus).catch(() => {});
     refreshHotkeys();
     const timer = setInterval(refreshHotkeys, 2500);
     return () => clearInterval(timer);
@@ -152,20 +154,20 @@ export default function DesktopApp() {
     } catch {} finally { setBusy(false); }
   }
   async function configureFirewall() {
-    if (!window.soundboardifyDesktop?.configureFirewall) {
-      setToast('Open this in the Soundboardify desktop app to update Windows Firewall.');
+    if (!window.SimplySoundDesktop?.configureFirewall) {
+      setToast('Open this in the SimplySound desktop app to update Windows Firewall.');
       return;
     }
     setBusy(true);
     try {
-      await window.soundboardifyDesktop.configureFirewall({ tailscaleAccess: settings.tailscaleAccess });
-      setToast('Windows Firewall now allows Soundboardify on this network.');
+      await window.SimplySoundDesktop.configureFirewall({ tailscaleAccess: settings.tailscaleAccess });
+      setToast('Windows Firewall now allows SimplySound on this network.');
     } catch (error) {
       setToast(error.message || 'Windows Firewall permission was not granted.');
     } finally { setBusy(false); }
   }
   async function openRelease() {
-    try { await window.soundboardifyDesktop?.openRelease(releaseUrl); }
+    try { await window.SimplySoundDesktop?.openRelease(releaseUrl); }
     catch { setToast('Could not open the GitHub release page.'); }
   }
 
@@ -182,14 +184,38 @@ export default function DesktopApp() {
     error: 'Could not reach GitHub',
     unavailable: 'Desktop version unavailable',
   }[updateState] || 'Check for updates';
+  const navigation = [
+    { id: 'overview', label: 'Overview', icon: 'home' },
+    { id: 'audio', label: 'Audio', icon: 'volume' },
+    { id: 'network', label: 'Phone access', icon: 'lock' },
+    { id: 'updates', label: 'Updates', icon: 'refresh' },
+  ];
+  const sectionCopy = {
+    overview: ['Your soundboard at a glance', 'Open the phone controller or check that audio is ready.'],
+    audio: ['Audio setup', 'Choose where sound effects play and tune local monitoring.'],
+    network: ['Phone access', 'Choose which private networks can reach your controller.'],
+    updates: ['Updates & about', 'Review new versions before choosing when to install them.'],
+  }[activeSection];
   return <main className={appClass}>
-    <header className="desktop-topbar">
-      <div className="desktop-brand"><span className="desktop-mark"><img src={ART} alt=""/></span><span><strong>Soundboardify</strong><small>DESKTOP CONTROL</small></span></div>
-      <div className="desktop-live"><i className={outputReady ? 'connected' : ''}/>{outputReady ? 'Audio ready' : status?.audio || 'Connecting'}</div>
-    </header>
-    <section className="control-layout">
-      <div className="control-heading"><div><h1>Settings</h1><p>Your board is ready to use from this PC or phone.</p></div></div>
-      {!settings ? <div className="desktop-loading">Connecting to Soundboardify…</div> : <>
+    <aside className="studio-sidebar" aria-label="Main navigation">
+      <div className="desktop-brand"><span className="desktop-mark"><img src={ART} alt=""/></span><span><strong>SimplySound</strong><small>DESKTOP</small></span></div>
+      <div className="sidebar-caption">WORKSPACE</div>
+      <nav className="studio-navigation" aria-label="Settings sections">
+        {navigation.map(item => <button key={item.id} type="button" className={`studio-nav-item ${activeSection === item.id ? 'active' : ''}`} aria-current={activeSection === item.id ? 'page' : undefined} onClick={() => setActiveSection(item.id)}><Icon name={item.icon} size={18}/><span>{item.label}</span>{item.id === 'updates' && updateState === 'available' && <i className="nav-update-dot"/>}</button>)}
+      </nav>
+      <div className="sidebar-spacer"/>
+      <div className="sidebar-health"><i className={outputReady ? 'connected' : ''}/><span><strong>{outputReady ? 'Audio ready' : 'Starting audio'}</strong><small>{outputReady ? (status?.endpoint || 'Sound output connected') : 'Checking your device'}</small></span></div>
+      <div className="sidebar-version">EARLY BETA <span>{appVersion ? `v${appVersion}` : ''}</span></div>
+    </aside>
+    <div className="studio-main">
+      <header className="desktop-topbar">
+        <div className="breadcrumb"><span>SimplySound</span><b>/</b><strong>{navigation.find(item => item.id === activeSection)?.label}</strong></div>
+        <div className="desktop-live"><i className={outputReady ? 'connected' : ''}/>{outputReady ? 'System ready' : 'Starting up'}</div>
+      </header>
+      <section className="control-layout">
+      <div className="control-heading"><div><h1>{sectionCopy[0]}</h1><p>{sectionCopy[1]}</p></div></div>
+      {!settings ? <div className="desktop-loading">Connecting to SimplySound…</div> : <>
+        {activeSection === 'overview' && <>
         <section className="connect-panel">
           <div className="connect-main">
             <div className="connect-title"><span className="connect-glyph"><Icon name="arrow" size={17}/></span><div><h2>Open your soundboard</h2><p>Scan to open the mobile controller.</p></div></div>
@@ -201,7 +227,13 @@ export default function DesktopApp() {
           </div>
           <div className="qr-frame">{wifiUrl && !wifiUrl.includes('127.0.0.1') ? <img src={`/api/phone/qr?v=${qrVersion}`} alt="Wi-Fi/LAN QR code for the soundboard"/> : <div className="qr-unavailable"><span className="qr-unavailable-mark"><Icon name="arrow" size={19}/></span><span>{settings?.lanAccess ? 'Connect this PC to Wi-Fi to show a phone QR.' : 'Turn on Wi-Fi / LAN access to show the QR.'}</span></div>}<span>WI-FI / LAN QR</span></div>
         </section>
-        <div className="settings-columns">
+        <div className="overview-summary" aria-label="System summary">
+          <div><span className="summary-label">Sound effects output</span><strong>{status?.endpoint || 'Windows default'}</strong><small>Default playback route</small></div>
+          <div><span className="summary-label">Phone controller</span><strong>{settings.lanAccess || settings.tailscaleAccess ? 'Ready to connect' : 'Access is off'}</strong><small>{[settings.lanAccess && 'Wi-Fi', settings.tailscaleAccess && 'Tailscale'].filter(Boolean).join(' · ') || 'Enable access in Phone access'}</small></div>
+          <button type="button" onClick={() => setActiveSection('audio')}><span className="summary-label">Quick audio check</span><strong>Open audio setup <Icon name="arrow" size={15}/></strong><small>Devices and local monitoring</small></button>
+        </div>
+        </>}
+        {activeSection === 'audio' && <div className="settings-columns single-column">
           <section className="settings-section audio-section">
             <div className="section-heading"><span className="section-icon"><Icon name="volume"/></span><div><h2>Audio</h2><p>Choose where your sounds play.</p></div></div>
             <DevicePicker id="playback" label="Soundboard output" detail="Defaults to the Windows playback device." value={settings.endpointId || null} currentName={status?.endpoint} devices={devices} onChange={selectDevice}/>
@@ -211,11 +243,13 @@ export default function DesktopApp() {
             <label className="master-level"><span><strong>Overall volume</strong><output>{Math.round(settings.masterVolume * 100)}%</output></span><input type="range" min="0" max="1" step=".01" value={settings.masterVolume} onChange={event => changeMasterVolume(Number(event.target.value))}/></label>
             <button className="test-output" onClick={() => request('/api/audio/test', { method: 'POST' }).then(() => setToast('Test sound played')).catch(error => setToast(error.message))}>Play a test sound <Icon name="arrow" size={14}/></button>
             <div className="shortcut-summary">
-              <div><strong>Global sound hotkeys</strong><small>Assign Ctrl + Alt shortcuts in a sound’s edit menu. They work while Soundboardify is running, even in the background.</small></div>
+              <div><strong>Global sound hotkeys</strong><small>Assign Ctrl + Alt shortcuts in a sound’s edit menu. They work while SimplySound is running, even in the background.</small></div>
               <span className={hotkeyStatus.unavailable.length ? 'has-conflicts' : ''}>{hotkeyStatus.active} active</span>
               {hotkeyStatus.unavailable.length > 0 && <p>Could not register {hotkeyStatus.unavailable.map(item => item.hotkey).join(', ')}. Another app may already use these shortcuts.</p>}
             </div>
           </section>
+        </div>}
+        {activeSection === 'network' && <div className="settings-columns single-column">
           <section className="settings-section connection-section">
             <div className="section-heading"><span className="section-icon"><Icon name="lock"/></span><div><h2>Phone access</h2><p>Control this board from your private network.</p></div></div>
             <div className="setting-inline access-toggle"><div><strong>Allow Wi-Fi / LAN access</strong><small>Let devices on your local network control the board.</small></div><Switch label="Allow Wi-Fi and LAN access" checked={settings.lanAccess} onChange={lanAccess => patchSettings({ lanAccess }).catch(() => {})}/></div>
@@ -238,6 +272,8 @@ export default function DesktopApp() {
             <p className="firewall-note">Windows may ask for administrator approval. The rule is limited to this app and your local network{settings.tailscaleAccess ? ' and Tailscale' : ''}.</p>
           </section>
         </div>
+        }
+        {activeSection === 'updates' && <>
         <footer className="version-footer" aria-label="Application version and updates">
           <div className="version-information"><span>Version <strong>{appVersion ? `v${appVersion}` : '—'}</strong></span><span className={`version-message ${updateState}`} role="status" aria-live="polite">{updateMessage}</span></div>
           <div className="version-actions">
@@ -246,13 +282,16 @@ export default function DesktopApp() {
           </div>
         </footer>
         {updateState === 'available' && releaseUrl && <section className="update-details" aria-label="Available update">
-          <div><strong>{releaseName || `Soundboardify ${latestVersion}`}</strong>{releasePublishedAt && <small>Published {new Date(releasePublishedAt).toLocaleDateString()}</small>}</div>
+          <div><strong>{releaseName || `SimplySound ${latestVersion}`}</strong>{releasePublishedAt && <small>Published {new Date(releasePublishedAt).toLocaleDateString()}</small>}</div>
           <p>Updates are never installed automatically. Review the notes on the official GitHub release page, then choose the installer or portable download yourself.</p>
           {releaseAssets.length > 0 && <small className="update-assets">Available downloads: {releaseAssets.map(asset => /-Setup\.exe$/i.test(asset.name) ? 'Installer' : /-Windows\.exe$/i.test(asset.name) ? 'Portable' : asset.name).join(' · ')}</small>}
           {releaseNotes && <details><summary>Release notes</summary><pre>{releaseNotes}</pre></details>}
         </section>}
+        <section className="about-panel"><span className="about-logo"><img src={ART} alt=""/></span><div><strong>SimplySound</strong><p>Open-source soundboard with a private phone controller.</p><small>Updates are checked automatically. Nothing installs until you choose it.</small></div><span className="beta-pill">EARLY BETA</span></section>
+        </>}
       </>}
     </section>
-    {toast && <div role="status" className="desktop-toast">{toast}</div>}
+      {toast && <div role="status" className="desktop-toast">{toast}</div>}
+    </div>
   </main>;
 }

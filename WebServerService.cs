@@ -3,6 +3,7 @@ using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
 using System.Net.Sockets;
+using System.Net.Http;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Hosting;
@@ -51,7 +52,7 @@ public sealed class WebSocketHub
     internal static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 }
 
-public sealed class WebServerService(AppCoordinator coordinator, WebSocketHub hub, SteamMicDiagnostic diagnostic)
+public sealed class WebServerService(AppCoordinator coordinator, WebSocketHub hub, SteamMicDiagnostic diagnostic, MarketplaceService marketplace)
 {
     private WebApplication? _app;
     public bool Running => _app is not null;
@@ -99,6 +100,31 @@ public sealed class WebServerService(AppCoordinator coordinator, WebSocketHub hu
             return Results.Content(svg, "image/svg+xml; charset=utf-8");
         });
         app.MapGet("/api/sounds", () => Results.Ok(coordinator.Library.All.Select(s => View(s, coordinator.Audio.Playback))));
+        app.MapGet("/api/marketplace/search", async (string? q, HttpContext context) =>
+        {
+            try { return Results.Ok(await marketplace.SearchAsync(q, context.RequestAborted)); }
+            catch (ArgumentException ex) { return Results.BadRequest(ex.Message); }
+            catch (HttpRequestException ex) { Log.Warning(ex, "Marketplace search failed"); return Results.Problem("MyInstants is temporarily unavailable. Try again in a moment.", statusCode: 502); }
+            catch (InvalidDataException ex) { Log.Warning(ex, "Marketplace search returned invalid data"); return Results.Problem("The sound catalog returned an invalid response.", statusCode: 502); }
+            catch (JsonException ex) { Log.Warning(ex, "Marketplace search returned malformed JSON"); return Results.Problem("The sound catalog returned an invalid response.", statusCode: 502); }
+        });
+        app.MapPost("/api/marketplace/{id}/install", async (string id, HttpContext context) =>
+        {
+            if (id.Length is < 1 or > 120 || !marketplace.TryGet(id, out var entry)) return Results.NotFound("Search for this sound again before installing it.");
+            try
+            {
+                var bytes = await marketplace.DownloadAsync(entry, coordinator.Settings.MaxUploadBytes, context.RequestAborted);
+                await using var stream = new MemoryStream(bytes, writable: false);
+                var sound = await coordinator.Library.ImportAsync(stream, entry.Title + ".mp3", context.RequestAborted);
+                sound = coordinator.Library.Update(sound.Id, imported => { imported.SourceProvider = "MyInstants"; imported.SourceUrl = entry.PageUrl; });
+                Log.Information("Marketplace sound imported {Id} from MyInstants entry {SourceId}", sound.Id, entry.Id);
+                return Results.Created($"/api/sounds/{sound.Id}", View(sound, coordinator.Audio.Playback));
+            }
+            catch (InvalidDataException ex) { return Results.BadRequest(ex.Message); }
+            catch (HttpRequestException ex) { Log.Warning(ex, "Marketplace sound download failed {SourceId}", entry.Id); return Results.Problem("MyInstants could not download this sound. Try again later.", statusCode: 502); }
+            catch (Exception ex) when (ex is NotSupportedException or NAudio.MmException or System.Runtime.InteropServices.COMException)
+            { Log.Warning(ex, "Marketplace sound could not be decoded {SourceId}", entry.Id); return Results.BadRequest("This sound could not be decoded as audio."); }
+        });
         app.MapGet("/api/hotkeys", () => Results.Ok(coordinator.Library.All.Where(sound => !string.IsNullOrWhiteSpace(sound.Hotkey)).Select(sound => new { sound.Id, sound.Name, sound.Hotkey })));
         app.MapPost("/api/hotkeys/{id:guid}/trigger", (Guid id) =>
         {
@@ -246,7 +272,7 @@ public sealed class WebServerService(AppCoordinator coordinator, WebSocketHub hu
     {
         var imageUrl = s.ImageFilename is null ? "/assets/logo.png" : $"/api/sounds/{s.Id}/image?v={Uri.EscapeDataString(s.ImageFilename)}";
         if (s.ImageFilename is not null && !string.IsNullOrWhiteSpace(coordinator.Settings.PairingToken)) imageUrl += "&token=" + Uri.EscapeDataString(coordinator.Settings.PairingToken);
-        return new { s.Id, s.Name, s.SourceFilename, s.SortOrder, s.OutputGain, s.StartSeconds, s.EndSeconds, s.SourceDurationSeconds, duration = s.PlayDuration, s.Mode, s.Hotkey, s.Icon, s.ButtonLabel, s.CreatedUtc, imageUrl, playing = p.SoundId == s.Id, progress = p.SoundId == s.Id && s.PlayDuration > 0 ? Math.Clamp((p.PositionSeconds - s.StartSeconds) / s.PlayDuration, 0, 1) : 0 };
+        return new { s.Id, s.Name, s.SourceFilename, s.SourceProvider, s.SourceUrl, s.SortOrder, s.OutputGain, s.StartSeconds, s.EndSeconds, s.SourceDurationSeconds, duration = s.PlayDuration, s.Mode, s.Hotkey, s.Icon, s.ButtonLabel, s.CreatedUtc, imageUrl, playing = p.SoundId == s.Id, progress = p.SoundId == s.Id && s.PlayDuration > 0 ? Math.Clamp((p.PositionSeconds - s.StartSeconds) / s.PlayDuration, 0, 1) : 0 };
     }
     private static void ApplyPatch(Sound s, SoundPatch p) { if (p.Name is not null) s.Name = p.Name; if (p.Volume is not null) s.Volume = p.Volume.Value; if (p.OutputGain is not null) s.OutputGain = p.OutputGain.Value; if (p.StartSeconds is not null) s.StartSeconds = p.StartSeconds.Value; if (p.EndSeconds.ValueKind != JsonValueKind.Undefined) s.EndSeconds = p.EndSeconds.ValueKind == JsonValueKind.Null ? null : p.EndSeconds.GetDouble(); if (p.Mode is not null) s.Mode = p.Mode; if (p.Hotkey is not null) s.Hotkey = p.Hotkey; if (p.Icon is not null) s.Icon = p.Icon; if (p.ButtonLabel is not null) s.ButtonLabel = p.ButtonLabel; }
     private static async Task<string?> DetectImageExtension(IFormFile file)

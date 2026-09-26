@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f7f8f6" />
+    <meta name="description" content="SimplySound is an open-source Windows soundboard with a phone remote on your LAN or Tailscale network." />
+    <title>SimplySound — Your soundboard, your setup</title>
+    <link rel="icon" type="image/png" href="/logo.png" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="topbar-inner">
+        <a class="brand" href="#top" aria-label="SimplySound home">
+          <img src="/logo.png" alt="" />
+          <span>SimplySound</span>
+        </a>
+        <nav class="main-nav" id="main-nav" aria-label="Page sections">
+          <a href="#overview">Overview</a>
+          <a href="#features">Features</a>
+          <a href="#getting-started">Getting started</a>
+        </nav>
+        <a class="source-link" href="https://github.com/js664/SimplySound" target="_blank" rel="noreferrer">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 6v-3.9c0-1.1.1-1.6-.5-2.2 3.3-.4 6.8-1.6 6.8-7.3a5.7 5.7 0 0 0-1.5-3.9 5.3 5.3 0 0 0-.1-3.9s-1.2-.4-4 1.5a13.7 13.7 0 0 0-7.3 0C5.6.4 4.4.8 4.4.8a5.3 5.3 0 0 0-.1 3.9 5.7 5.7 0 0 0-1.5 3.9c0 5.7 3.5 6.9 6.8 7.3-.5.5-.6 1-.6 2.2V22"/></svg>
+          View source <span aria-hidden="true">↗</span>
+        </a>
+        <button class="menu-toggle" type="button" aria-label="Open navigation" aria-expanded="false" aria-controls="main-nav"><span></span><span></span></button>
+      </div>
+    </header>
+
+    <main id="top" class="page-wrap">
+      <div class="breadcrumb"><a href="#top">Projects</a><span>/</span><span>Soundboard</span></div>
+
+      <section class="project-heading" aria-labelledby="project-title">
+        <div class="project-title-block">
+          <div class="project-title-line">
+            <h1 id="project-title">SimplySound</h1>
+            <span class="beta-badge"><i></i> Early beta</span>
+          </div>
+          <p class="project-byline">A self-hosted Windows soundboard, controlled from your phone.</p>
+          <div class="tag-list" aria-label="Project tags">
+            <span>Windows</span><span>Self-hosted</span><span>Open source</span>
+          </div>
+        </div>
+        <div class="project-actions">
+          <a class="button button-primary" href="https://github.com/js664/SimplySound/releases" target="_blank" rel="noreferrer">Download for Windows <span aria-hidden="true">↗</span></a>
+          <a class="button button-secondary" href="https://github.com/js664/SimplySound" target="_blank" rel="noreferrer">GitHub <span aria-hidden="true">↗</span></a>
+        </div>
+      </section>
+
+      <figure class="product-preview" aria-label="Preview of the SimplySound desktop app and phone remote">
+        <div class="preview-desktop">
+          <div class="app-titlebar">
+            <div class="app-brand"><img src="/logo.png" alt="" /><span>SimplySound</span></div>
+            <div class="window-controls" aria-hidden="true"><i></i><i></i><i></i></div>
+          </div>
+          <div class="app-body">
+            <aside class="app-rail" aria-hidden="true">
+              <span class="rail-logo"><img src="/logo.png" alt="" /></span>
+              <span class="rail-icon rail-selected"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 5h7v6H4zM14 5h6v6h-6zM4 14h7v6H4zM14 14h6v6h-6z"/></svg></span>
+              <span class="rail-icon"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3v18M5 8h14M7 16h10"/></svg></span>
+              <span class="rail-icon rail-settings"><svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="m19.4 15 .1.1 1.2 1-1.4 2.4-1.5-.5a8 8 0 0 1-1.7 1l-.3 1.6h-2.8l-.3-1.6a8 8 0 0 1-1.7-1l-1.5.5-1.4-2.4 1.2-1a7 7 0 0 1 0-2l-1.2-1 1.4-2.4 1.5.5a8 8 0 0 1 1.7-1l.3-1.6h2.8l.3 1.6a8 8 0 0 1 1.7 1l1.5-.5 1.4 2.4-1.2 1a7 7 0 0 1 0 2Z"/></svg></span>
+            </aside>
+            <div class="app-main">
+              <div class="app-toolbar"><div><span class="app-eyebrow">YOUR SOUND LIBRARY</span><h2>Quick sounds</h2></div><div class="toolbar-actions"><span class="connection-state"><i></i> Ready</span><span class="add-sound">＋ Add sounds</span></div></div>
+              <div class="app-content">
+                <div class="demo-grid" aria-label="Example soundboard buttons">
+                  <div class="demo-tile tile-one"><span class="tile-glyph glyph-horn"><svg aria-hidden="true" viewBox="0 0 48 48"><path d="M7 19h19l12-9v28l-12-9H7zM15 29l5 11h8l-6-11M39 17q7 7 0 14"/></svg></span><b>Airhorn</b><small>CTRL + ALT + 1</small></div>
+                  <div class="demo-tile tile-two"><span class="tile-glyph glyph-windows"><svg aria-hidden="true" viewBox="0 0 48 48"><path d="m5 11 17-3v16H5zM26 7l17-3v20H26zM5 27h17v16L5 40zM26 27h17v20l-17-3z"/></svg></span><b>Windows XP</b><small>CTRL + ALT + 2</small></div>
+                  <div class="demo-tile tile-three"><span class="tile-glyph glyph-chat"><svg aria-hidden="true" viewBox="0 0 48 48"><path d="M7 8h34v25H24L11 42v-9H7zM16 20h16"/></svg></span><b>Bruh</b><small>CTRL + ALT + 3</small></div>
+                  <div class="demo-tile tile-four"><span class="tile-glyph glyph-cheer"><svg aria-hidden="true" viewBox="0 0 48 48"><circle cx="24" cy="11" r="6"/><circle cx="9" cy="17" r="4"/><circle cx="39" cy="17" r="4"/><path d="M13 40v-8a11 11 0 0 1 22 0v8zM3 39v-6a7 7 0 0 1 8-7M45 39v-6a7 7 0 0 0-8-7"/></svg></span><b>Crowd cheer</b><small>CTRL + ALT + 4</small></div>
+                  <div class="demo-tile tile-five"><span class="tile-glyph glyph-trombone"><svg aria-hidden="true" viewBox="0 0 48 48"><path d="M7 16h22v7H7zM29 12h6v15h-6zM35 16h7v8h-7zM14 23v13h20M34 32l7 4-7 4"/></svg></span><b>Sad trombone</b><small>CTRL + ALT + 5</small></div>
+                  <div class="demo-tile tile-six"><span class="tile-glyph glyph-star"><svg aria-hidden="true" viewBox="0 0 48 48"><path d="m24 5 6 13h14L33 28l4 15-13-8-13 8 4-15L4 18h14z"/></svg></span><b>Victory</b><small>CTRL + ALT + 6</small></div>
+                </div>
+                <div class="playback-strip"><div class="playing-meta"><span class="play-indicator"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m8 5 12 7-12 7z"/></svg></span><span><small>NOW PLAYING</small><strong>Airhorn</strong></span></div><div class="waveform" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><span class="output-device"><i></i> Sound effects → Selected output</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="preview-phone" aria-hidden="true">
+          <div class="phone-top"><span>9:41</span><span class="phone-dots"><i></i><i></i><i></i></span></div>
+          <div class="phone-head"><img src="/logo.png" alt="" /><span><small>YOUR BOARD</small><b>Quick sounds</b></span><i>···</i></div>
+          <div class="phone-grid"><span class="phone-tile phone-lime"><i><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 9h8l7-5v16l-7-5H3zM7 15l2 5h4l-3-5"/></svg></i>Airhorn</span><span class="phone-tile phone-blue"><i><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 4h8v7H3zM13 4h8v7h-8zM3 13h8v7H3zM13 13h8v7h-8z"/></svg></i>Windows XP</span><span class="phone-tile phone-rose"><i><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 4h16v12H11l-5 4v-4H4zM8 9h8"/></svg></i>Bruh</span><span class="phone-tile phone-purple"><i><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3v2m7 1-1.4 1.4M21 13h-2m-2 6-1.4-1.4M5 6l1.4 1.4M3 13h2m2 6 1.4-1.4M12 9l2 4h4l-3.2 2.4 1.2 4-4-2.5-4 2.5 1.2-4L6 13h4z"/></svg></i>Crowd cheer</span></div>
+          <div class="phone-connected"><i></i> Connected to your PC</div>
+        </div>
+        <figcaption><span>SimplySound for Windows</span><span>Desktop library + phone controller</span></figcaption>
+      </figure>
+
+      <div class="detail-layout">
+        <div class="detail-main">
+          <section class="content-section overview-section" id="overview">
+            <div class="section-heading"><h2>Overview</h2><span>Personal audio</span></div>
+            <p class="lead-copy">Build your sound library on your Windows PC, then trigger sounds from your desktop or phone. SimplySound routes effects to the output you choose, with optional local monitoring when you want to hear them too.</p>
+            <p>Sounds stay in your setup. Your phone connects to the soundboard over your private Wi-Fi network, or through Tailscale when you’re away. There’s no cloud library to set up.</p>
+            <div class="overview-details"><span><b>Made for</b> Windows 10 &amp; 11</span><span><b>License</b> MIT</span><span><b>Current release</b> 1.0.2 · Early Beta</span></div>
+          </section>
+
+          <section class="content-section" id="features">
+            <div class="section-heading"><h2>Features</h2><span>At a glance</span></div>
+            <ul class="feature-list">
+              <li><span class="feature-icon icon-trigger"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m8 5 12 7-12 7z"/></svg></span><span><b>Quick sound triggers</b><small>Replay or retrigger clips without losing the moment.</small></span></li>
+              <li><span class="feature-icon icon-phone"><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="6" y="2.5" width="12" height="19" rx="2"/><path d="M10 18.5h4"/></svg></span><span><b>Phone control</b><small>Open the same soundboard on your LAN or private Tailscale network.</small></span></li>
+              <li><span class="feature-icon icon-import"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 16V4m-5 5 5-5 5 5M4 15v5h16v-5"/></svg></span><span><b>Your library, your layout</b><small>Import multiple files, add artwork, and arrange your buttons.</small></span></li>
+              <li><span class="feature-icon icon-audio"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 10v4M7 7v10M11 4v16M15 8v8M19 10v4M22 11v2"/></svg></span><span><b>Audio controls</b><small>Pick your output devices, tune each sound, and use global hotkeys.</small></span></li>
+            </ul>
+          </section>
+
+          <section class="content-section getting-started" id="getting-started">
+            <div class="section-heading"><h2>Getting started</h2><span>Three quick steps</span></div>
+            <ol class="setup-list">
+              <li><span>1</span><div><b>Install or use the portable app</b><p>Choose the installer or portable Windows download from Releases.</p></div></li>
+              <li><span>2</span><div><b>Add your sounds</b><p>Import audio files in the desktop app and choose your output device.</p></div></li>
+              <li><span>3</span><div><b>Connect your phone</b><p>Use the LAN link or QR code shown in the app. Tailscale is optional for remote access.</p></div></li>
+            </ol>
+            <div class="setup-actions"><a class="button button-primary" href="https://github.com/js664/SimplySound/releases" target="_blank" rel="noreferrer">Browse Windows releases <span aria-hidden="true">↗</span></a><a class="inline-link" href="https://github.com/js664/SimplySound#build-it-yourself" target="_blank" rel="noreferrer">Build from source <span aria-hidden="true">↗</span></a></div>
+          </section>
+        </div>
+
+        <aside class="detail-sidebar" aria-label="Project details">
+          <div class="beta-note"><span class="beta-note-icon">!</span><div><b>Early beta</b><p>SimplySound is still being developed. Back up your sound library before updating.</p><a href="https://github.com/js664/SimplySound/releases" target="_blank" rel="noreferrer">Read release notes ↗</a></div></div>
+          <div class="side-block"><h3>Project links</h3><a href="https://github.com/js664/SimplySound" target="_blank" rel="noreferrer"><span>Source code</span><b>↗</b></a><a href="https://github.com/js664/SimplySound/releases" target="_blank" rel="noreferrer"><span>Windows downloads</span><b>↗</b></a><a href="https://github.com/js664/SimplySound/issues" target="_blank" rel="noreferrer"><span>Report an issue</span><b>↗</b></a></div>
+          <div class="side-block side-tech"><h3>Details</h3><dl><div><dt>Platform</dt><dd>Windows</dd></div><div><dt>License</dt><dd>MIT</dd></div><div><dt>Network</dt><dd>LAN · Tailscale</dd></div><div><dt>Updates</dt><dd>Manual confirmation</dd></div></dl></div>
+          <a class="side-star" href="https://github.com/js664/SimplySound" target="_blank" rel="noreferrer"><span class="star-mark"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m12 2 2.8 6.2L21 11l-6.2 2.8L12 20l-2.8-6.2L3 11l6.2-2.8z"/></svg></span><span><b>Like the project?</b><small>Explore it and give it a star.</small></span><b class="side-star-arrow">↗</b></a>
+        </aside>
+      </div>
+
+      <section class="closing-note">
+        <div class="closing-logo"><img src="/logo.png" alt="" /></div>
+        <div><h2>Your library stays yours.</h2><p>SimplySound is open source and self-hosted on your Windows PC.</p></div>
+        <a class="button button-secondary" href="https://github.com/js664/SimplySound" target="_blank" rel="noreferrer">Explore the project <span aria-hidden="true">↗</span></a>
+      </section>
+    </main>
+
+    <footer class="footer"><div class="footer-inner"><a class="brand" href="#top"><img src="/logo.png" alt="" /><span>SimplySound</span></a><span>Open source · MIT License</span><a href="https://github.com/js664/SimplySound" target="_blank" rel="noreferrer">GitHub ↗</a></div></footer>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

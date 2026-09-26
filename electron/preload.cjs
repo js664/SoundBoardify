@@ -1,11 +1,11 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
-contextBridge.exposeInMainWorld('soundboardifyDesktop', Object.freeze({
-  configureFirewall: options => ipcRenderer.invoke('soundboardify:configure-firewall', {
+contextBridge.exposeInMainWorld('SimplySoundDesktop', Object.freeze({
+  configureFirewall: options => ipcRenderer.invoke('SimplySound:configure-firewall', {
     tailscaleAccess: options?.tailscaleAccess === true,
   }),
-  getVersion: () => ipcRenderer.invoke('soundboardify:app-version'),
-  getHotkeyStatus: () => ipcRenderer.invoke('soundboardify:hotkey-status'),
-  checkForUpdates: () => ipcRenderer.invoke('soundboardify:check-updates'),
-  openRelease: url => ipcRenderer.invoke('soundboardify:open-release', url),
+  getVersion: () => ipcRenderer.invoke('SimplySound:app-version'),
+  getHotkeyStatus: () => ipcRenderer.invoke('SimplySound:hotkey-status'),
+  checkForUpdates: () => ipcRenderer.invoke('SimplySound:check-updates'),
+  openRelease: url => ipcRenderer.invoke('SimplySound:open-release', url),
 }));
