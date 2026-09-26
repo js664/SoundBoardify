@@ -108,8 +108,20 @@ public sealed class SoundLibrary(Storage storage)
     {
         lock (_gate)
         {
-            if (ids.Count != _sounds.Count || ids.Distinct().Count() != ids.Count || ids.Any(id => _sounds.All(s => s.Id != id))) throw new ArgumentException("Order must contain every sound once.");
-            for (var i = 0; i < ids.Count; i++) { var sound = _sounds.First(s => s.Id == ids[i]); sound.SortOrder = i; storage.Save(sound); }
+            var byId = _sounds.ToDictionary(sound => sound.Id);
+            if (ids.Count != byId.Count || ids.Distinct().Count() != ids.Count || ids.Any(id => !byId.ContainsKey(id))) throw new ArgumentException("Order must contain every sound once.");
+            if (_sounds.OrderBy(sound => sound.SortOrder).Select(sound => sound.Id).SequenceEqual(ids)) return;
+
+            var reordered = new List<Sound>(ids.Count);
+            for (var i = 0; i < ids.Count; i++)
+            {
+                var sound = Clone(byId[ids[i]]);
+                sound.SortOrder = i;
+                reordered.Add(sound);
+            }
+            storage.SaveSoundsOrder(reordered);
+            _sounds.Clear();
+            _sounds.AddRange(reordered);
         }
         Changed?.Invoke("order-changed", ids);
     }

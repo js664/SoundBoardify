@@ -123,6 +123,25 @@ public sealed class Storage
         cmd.CommandText = "INSERT INTO sounds(id,sort_order,json) VALUES($id,$order,$json) ON CONFLICT(id) DO UPDATE SET sort_order=$order,json=$json";
         cmd.Parameters.AddWithValue("$id", sound.Id.ToString()); cmd.Parameters.AddWithValue("$order", sound.SortOrder); cmd.Parameters.AddWithValue("$json", JsonSerializer.Serialize(sound)); cmd.ExecuteNonQuery();
     }
+    public void SaveSoundsOrder(IReadOnlyList<Sound> sounds)
+    {
+        using var db = Connect();
+        using var transaction = db.BeginTransaction();
+        using var command = db.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "INSERT INTO sounds(id,sort_order,json) VALUES($id,$order,$json) ON CONFLICT(id) DO UPDATE SET sort_order=$order,json=$json";
+        var idParameter = command.Parameters.Add("$id", SqliteType.Text);
+        var orderParameter = command.Parameters.Add("$order", SqliteType.Integer);
+        var jsonParameter = command.Parameters.Add("$json", SqliteType.Text);
+        foreach (var sound in sounds)
+        {
+            idParameter.Value = sound.Id.ToString();
+            orderParameter.Value = sound.SortOrder;
+            jsonParameter.Value = JsonSerializer.Serialize(sound);
+            command.ExecuteNonQuery();
+        }
+        transaction.Commit();
+    }
     public void Delete(Guid id)
     {
         using var db = Connect(); using var cmd = db.CreateCommand(); cmd.CommandText = "DELETE FROM sounds WHERE id=$id"; cmd.Parameters.AddWithValue("$id", id.ToString()); cmd.ExecuteNonQuery();

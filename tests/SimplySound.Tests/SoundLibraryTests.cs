@@ -127,6 +127,66 @@ public sealed class SoundLibraryTests
         }
     }
 
+    [Fact]
+    public void ReorderCommitsTheEntireLibraryOrderAtomically()
+    {
+        var root = CreateRoot();
+        try
+        {
+            var storage = new Storage(root);
+            storage.Initialize();
+            var sounds = new[] { CreateSound(0), CreateSound(1), CreateSound(2) };
+            foreach (var sound in sounds) storage.Save(sound);
+            var library = new SoundLibrary(storage);
+            var expected = new[] { sounds[2].Id, sounds[0].Id, sounds[1].Id };
+
+            library.Reorder(expected);
+
+            Assert.Equal(expected, library.All.Select(sound => sound.Id));
+            Assert.Equal(new[] { 0, 1, 2 }, library.All.Select(sound => sound.SortOrder));
+            Assert.Equal(expected, new SoundLibrary(storage).All.Select(sound => sound.Id));
+            Assert.Equal(new[] { 0, 1, 2 }, storage.LoadSounds().Select(sound => sound.SortOrder));
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void FailedReorderLeavesMemoryAndDatabaseInTheOriginalOrder()
+    {
+        var root = CreateRoot();
+        try
+        {
+            var storage = new Storage(root);
+            storage.Initialize();
+            var sounds = new[] { CreateSound(0), CreateSound(1), CreateSound(2) };
+            foreach (var sound in sounds) storage.Save(sound);
+            var library = new SoundLibrary(storage);
+            using (var db = new SqliteConnection($"Data Source={Path.Combine(storage.Root, "database", "library.db")};Pooling=False"))
+            {
+                db.Open();
+                using var command = db.CreateCommand();
+                command.CommandText = $"CREATE TRIGGER fail_reorder BEFORE UPDATE ON sounds WHEN OLD.id='{sounds[1].Id}' BEGIN SELECT RAISE(ABORT, 'forced reorder failure'); END;";
+                command.ExecuteNonQuery();
+            }
+
+            Assert.Throws<SqliteException>(() => library.Reorder([sounds[2].Id, sounds[1].Id, sounds[0].Id]));
+
+            Assert.Equal(sounds.Select(sound => sound.Id), library.All.Select(sound => sound.Id));
+            Assert.Equal(new[] { 0, 1, 2 }, library.All.Select(sound => sound.SortOrder));
+            Assert.Equal(sounds.Select(sound => sound.Id), storage.LoadSounds().Select(sound => sound.Id));
+            Assert.Equal(new[] { 0, 1, 2 }, storage.LoadSounds().Select(sound => sound.SortOrder));
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
     private static string CreateRoot() => Path.Combine(Path.GetTempPath(), "SimplySound-library-test-" + Guid.NewGuid().ToString("N"));
 
     private static Sound CreateSound(int order) => new()
