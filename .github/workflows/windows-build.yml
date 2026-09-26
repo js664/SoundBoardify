@@ -40,12 +40,12 @@ jobs:
             throw "Release tag $env:GITHUB_REF_NAME must match electron/package.json version v$packageVersion."
           }
 
-      - name: Test Electron update version handling
-        run: npm test
-        working-directory: electron
-
       - name: Restore desktop dependencies
         run: npm ci
+        working-directory: electron
+
+      - name: Test Electron update version handling
+        run: npm test
         working-directory: electron
 
       - name: Audit desktop dependencies
